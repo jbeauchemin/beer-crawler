@@ -1,0 +1,40 @@
+[
+  {
+    "url": "https://beaudegat.ca/products/canal-fatal-copy",
+    "name": "Fardeau",
+    "price": "$7.58",
+    "producer": "Messorem Bracitorium",
+    "alcohol": "6.2%",
+    "volume": "473ml",
+    "style": "HOUBLONNÉE",
+    "description": "Rakau, Riwaka",
+    "photo_url": "http://beaudegat.ca/cdn/shop/files/rn-image_picker_lib_temp_6a8f2edf-06cf-4462-9670-e4cd5ddfb29b.jpg",
+    "availability": "En stock",
+    "source": "beaudegat",
+    "sources": [
+      "beaudegat",
+      "espacehoublon"
+    ],
+    "urls": [
+      "https://beaudegat.ca/products/canal-fatal-copy",
+      "https://espacehoublon.ca/produit/messorem-fardeau"
+    ],
+    "pack_info": {},
+    "prices": {
+      "beaudegat": "$7.58",
+      "espacehoublon": "7,99$"
+    },
+    "descriptions": {
+      "beaudegat": "Rakau, Riwaka"
+    },
+    "photo_urls": {
+      "beaudegat": "http://beaudegat.ca/cdn/shop/files/rn-image_picker_lib_temp_6a8f2edf-06cf-4462-9670-e4cd5ddfb29b.jpg",
+      "espacehoublon": "https://espacehoublon.ca/wp-content/uploads/2024/05/PRODUIT-WEB-98-1.png"
+    },
+    "styles": {
+      "beaudegat": "HOUBLONNÉE",
+      "espacehoublon": "IPA"
+    },
+    "sub_styles": {}
+  }
+]
