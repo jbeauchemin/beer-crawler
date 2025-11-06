@@ -114,6 +114,24 @@ def test_multiple_cases():
             "beer": {"name": "Saison du Tracteur", "producer": "Trou du Diable", "volume": "341ml"},
             "api": {"Maker": "Brasserie Trou du Diable", "product": "Saison du Tracteur", "volume": "341 ml"},
             "expected": True
+        },
+        {
+            "description": "Match avec style ajouté par l'API (1 mot)",
+            "beer": {"name": "Blanche de Fox", "producer": "Frontibus", "volume": "473ml"},
+            "api": {"Maker": "Microbrasserie au Frontibus", "product": "Blanche de Fox Blanche", "volume": "473 ml"},
+            "expected": True
+        },
+        {
+            "description": "Match avec style ajouté par l'API (1 mot)",
+            "beer": {"name": "Pop Gose the World", "producer": "Hopfenstark", "volume": "473ml"},
+            "api": {"Maker": "Brasserie Hopfenstark", "product": "Pop gose the world Gose", "volume": "473 ml"},
+            "expected": True
+        },
+        {
+            "description": "Pas de match - variante avec 2+ mots supplémentaires",
+            "beer": {"name": "Fardeau", "producer": "Messorem", "volume": "473ml"},
+            "api": {"Maker": "Messorem Bracitorium", "product": "Fardeau Xtrm Turbo", "volume": "473 ml"},
+            "expected": False
         }
     ]
 

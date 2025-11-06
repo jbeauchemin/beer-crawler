@@ -103,27 +103,37 @@ class UPCEnricher:
         if not beer_name or not api_product:
             return False
 
-        # Le nom doit être EXACTEMENT le même
-        # On accepte si le nom de la bière est contenu au début du nom API
-        # MAIS on rejette si l'API a des mots supplémentaires à la fin
+        # Le nom doit être EXACTEMENT le même, OU l'API peut avoir 1 mot de plus (le style)
+        # Exemples acceptés:
+        # - "blanche de fox" vs "blanche de fox blanche" ✓ (style ajouté)
+        # - "pop gose the world" vs "pop gose the world gose" ✓ (style ajouté)
+        # Exemples rejetés:
+        # - "fardeau" vs "fardeau xtrm turbo" ✗ (2+ mots supplémentaires = variante)
 
         beer_words = beer_name.split()
         api_words = api_product.split()
 
-        # Si le nom de l'API a plus de mots, c'est probablement une variante
+        # Si le nom de l'API a plus de mots
         if len(api_words) > len(beer_words):
-            # Vérifie si c'est juste un préfixe exact
+            # Vérifie que l'API commence par le nom de la bière
             if not api_product.startswith(beer_name):
                 return False
 
-            # Si l'API a des mots supplémentaires, ce n'est pas un match exact
-            # Exemple: "fardeau" vs "fardeau xtrm turbo" -> pas un match
-            if len(api_words) > len(beer_words):
+            # Tolère 1 mot supplémentaire (probablement le style)
+            # Rejette si 2+ mots supplémentaires (variante)
+            extra_words = len(api_words) - len(beer_words)
+            if extra_words > 1:
                 return False
 
-        # Si les noms normalisés ne sont pas identiques, pas de match
+        # Si les noms ne sont pas identiques, vérifie si c'est accepté (style ajouté)
         if beer_name != api_product:
-            return False
+            # Si l'API n'a pas plus de mots, ce n'est pas un match
+            if len(api_words) <= len(beer_words):
+                return False
+
+            # Vérifie que l'API commence par le nom de la bière
+            if not api_product.startswith(beer_name):
+                return False
 
         # 3. Vérifie le volume (optionnel mais recommandé)
         beer_volume = self.normalize_volume(beer.get('volume', ''))
