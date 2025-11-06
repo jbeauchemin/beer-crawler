@@ -7,6 +7,7 @@ S'adapte automatiquement à la structure du site et extrait les données intelli
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from bs4 import BeautifulSoup
 import time
@@ -15,6 +16,15 @@ import re
 from collections import Counter
 from urllib.parse import urljoin, urlparse
 from typing import List, Dict, Optional, Set
+
+# Import webdriver-manager pour installation automatique de ChromeDriver
+try:
+    from webdriver_manager.chrome import ChromeDriverManager
+    WEBDRIVER_MANAGER_AVAILABLE = True
+except ImportError:
+    WEBDRIVER_MANAGER_AVAILABLE = False
+    print("⚠️  webdriver-manager non installé. Installation automatique de ChromeDriver désactivée.")
+    print("   Pour l'activer: pip install webdriver-manager")
 
 
 class UniversalBeerCrawler:
@@ -30,12 +40,24 @@ class UniversalBeerCrawler:
         # Configuration Chrome
         chrome_options = Options()
         if headless:
-            chrome_options.add_argument('--headless')
+            chrome_options.add_argument('--headless=new')
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--disable-gpu')
         chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
 
-        self.driver = webdriver.Chrome(options=chrome_options)
+        # Initialise Chrome avec webdriver-manager si disponible
+        if WEBDRIVER_MANAGER_AVAILABLE:
+            try:
+                service = Service(ChromeDriverManager().install())
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            except Exception as e:
+                print(f"⚠️  Erreur avec webdriver-manager: {e}")
+                print("   Tentative avec ChromeDriver par défaut...")
+                self.driver = webdriver.Chrome(options=chrome_options)
+        else:
+            self.driver = webdriver.Chrome(options=chrome_options)
+
         self.wait = WebDriverWait(self.driver, 10)
 
         # Configuration découverte automatiquement

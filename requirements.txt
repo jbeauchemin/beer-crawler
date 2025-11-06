@@ -1,0 +1,20 @@
+# Beer Crawler - Dépendances Python
+# Installation: pip install -r requirements.txt
+
+# Selenium pour l'automatisation du navigateur
+selenium>=4.15.0
+
+# BeautifulSoup pour le parsing HTML
+beautifulsoup4>=4.12.0
+
+# Requests pour les requêtes HTTP (analyseur lite)
+requests>=2.31.0
+
+# WebDriver Manager pour installation automatique de ChromeDriver
+webdriver-manager>=4.0.0
+
+# Optionnel : pour le traitement d'images
+# Décommenter si vous utilisez scripts/process_images.py
+# pillow>=10.0.0
+# rembg>=2.0.0
+# tqdm>=4.66.0

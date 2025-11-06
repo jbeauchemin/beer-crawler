@@ -107,34 +107,118 @@ python crawler/universal-crawler.py https://autre-brasserie.com beers_custom.jso
 
 ## Installation
 
-### Prérequis
-
-- Python 3.8+
-- Google Chrome ou Chromium
-- ChromeDriver
-
-### Dépendances Python
+### 🚀 Installation rapide (recommandée)
 
 ```bash
-# Créer un environnement virtuel (recommandé)
+# 1. Cloner le repo
+git clone https://github.com/jbeauchemin/beer-crawler.git
+cd beer-crawler
+
+# 2. Créer un environnement virtuel
 python3 -m venv env
 source env/bin/activate
 
-# Installer les dépendances
-pip install selenium beautifulsoup4 requests
+# 3. Installer TOUTES les dépendances
+pip install -r requirements.txt
+# Ou manuellement: pip install selenium beautifulsoup4 requests webdriver-manager
+
+# 4. Installer Chrome (si pas déjà installé)
+# macOS:
+brew install --cask google-chrome
+
+# Linux:
+sudo apt install google-chrome-stable
+
+# 5. Vérifier l'installation
+python check-setup.py
+
+# 6. C'est prêt ! 🎉
+python crawler/universal-crawler.py https://dieuduciel.com
 ```
 
-### Configuration Chrome
+### 📋 Vérification de l'environnement
 
-Les crawlers utilisent Chrome en mode headless. Assurez-vous que Chrome et ChromeDriver sont installés :
+Utilisez le script de vérification pour vous assurer que tout est correctement installé :
 
 ```bash
-# Ubuntu/Debian
-sudo apt-get install chromium-browser chromium-chromedriver
+python check-setup.py
+```
 
-# macOS (avec Homebrew)
+Ce script vérifie :
+- ✅ Version de Python (3.8+)
+- ✅ Modules Python (selenium, beautifulsoup4, webdriver-manager)
+- ✅ Chrome installé
+
+### 🔧 Installation manuelle (si problèmes)
+
+#### macOS
+
+```bash
+# 1. Environnement virtuel
+python3 -m venv env
+source env/bin/activate
+
+# 2. Dépendances Python
+pip install selenium beautifulsoup4 requests webdriver-manager
+
+# 3. Chrome (via Homebrew)
 brew install --cask google-chrome
-brew install chromedriver
+
+# Note: webdriver-manager installera automatiquement ChromeDriver !
+```
+
+#### Linux (Ubuntu/Debian)
+
+```bash
+# 1. Environnement virtuel
+python3 -m venv env
+source env/bin/activate
+
+# 2. Dépendances Python
+pip install selenium beautifulsoup4 requests webdriver-manager
+
+# 3. Chrome
+wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+sudo dpkg -i google-chrome-stable_current_amd64.deb
+sudo apt-get install -f
+```
+
+#### Windows
+
+```bash
+# 1. Environnement virtuel
+python -m venv env
+env\Scripts\activate
+
+# 2. Dépendances Python
+pip install selenium beautifulsoup4 requests webdriver-manager
+
+# 3. Télécharger et installer Chrome
+# https://www.google.com/chrome/
+```
+
+### ⚠️ Résolution de problèmes
+
+**Erreur : "chromedriver version cannot be discovered"**
+
+Solution : Installer `webdriver-manager` qui gère automatiquement ChromeDriver :
+
+```bash
+pip install webdriver-manager
+```
+
+Le crawler détectera automatiquement webdriver-manager et installera ChromeDriver à la première exécution.
+
+**Erreur : "Chrome binary not found"**
+
+Solution : Installer Chrome :
+
+```bash
+# macOS
+brew install --cask google-chrome
+
+# Linux
+sudo apt install google-chrome-stable
 ```
 
 ---
