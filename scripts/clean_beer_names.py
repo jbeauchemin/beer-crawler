@@ -89,6 +89,26 @@ class BeerNameCleaner:
 
         return (None, None, beer_name)
 
+    def remove_volume_suffix(self, beer_name: str) -> str:
+        """
+        Enlève les suffixes de volume comme "- 473ml", "- 355ml", etc.
+
+        Args:
+            beer_name: Nom de la bière
+
+        Returns:
+            Le nom sans suffixe de volume
+        """
+        if not beer_name:
+            return beer_name
+
+        # Pattern pour détecter les volumes à la fin
+        # Exemples: "- 473ml", "- 355 ml", "- 0.5L", "- 500 mL"
+        volume_pattern = r'\s*[-–—:]\s*\d+(\.\d+)?\s*(ml|ML|mL|Ml|l|L|litre|litres)\s*$'
+
+        cleaned = re.sub(volume_pattern, '', beer_name, flags=re.IGNORECASE)
+        return cleaned.strip()
+
     def should_clean(self, beer_name: str, producer: str) -> bool:
         """
         Détermine si le nom de la bière devrait être nettoyé
@@ -128,7 +148,9 @@ class BeerNameCleaner:
 
     def clean_beer_name(self, beer: Dict) -> str:
         """
-        Nettoie le nom d'une bière en enlevant le nom du producteur
+        Nettoie le nom d'une bière en enlevant:
+        1. Le nom du producteur au début (si présent)
+        2. Le volume à la fin (si présent)
 
         Args:
             beer: Dictionnaire avec 'name' et 'producer'
@@ -138,18 +160,20 @@ class BeerNameCleaner:
         """
         original_name = beer.get('name', '')
         producer = beer.get('producer', '')
+        cleaned_name = original_name
 
-        if not self.should_clean(original_name, producer):
-            return original_name
+        # Étape 1: Enlève le préfixe du producteur
+        if self.should_clean(cleaned_name, producer):
+            # Extrait le préfixe et le reste
+            prefix, sep, rest = self.extract_producer_prefix(cleaned_name)
 
-        # Extrait le préfixe et le reste
-        prefix, sep, rest = self.extract_producer_prefix(original_name)
+            if prefix and rest:
+                cleaned_name = rest
 
-        if prefix and rest:
-            # Retourne le nom sans le préfixe
-            return rest
+        # Étape 2: Enlève le suffixe de volume
+        cleaned_name = self.remove_volume_suffix(cleaned_name)
 
-        return original_name
+        return cleaned_name
 
     def clean_beers(self, beers: List[Dict]) -> List[Dict]:
         """

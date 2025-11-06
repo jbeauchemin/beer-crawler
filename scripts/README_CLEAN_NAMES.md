@@ -4,10 +4,20 @@ Ce script nettoie les noms de bières en enlevant le nom du producteur quand il 
 
 ## 🎯 Problème
 
-Certains sites incluent le nom du producteur dans le nom de la bière:
+Certains sites incluent des informations superflues dans le nom de la bière:
+
+### Préfixe producteur
 - `"Messorem – Not so doomed après tout"` → devrait être `"Not so doomed après tout"`
 - `"Bas Canada – Dépression saisonnière"` → devrait être `"Dépression saisonnière"`
 - `"Sir John – No Escape"` → devrait être `"No Escape"`
+
+### Suffixe volume
+- `"Écume - 473ml"` → devrait être `"Écume"`
+- `"IPA - 355 ml"` → devrait être `"IPA"`
+- `"Growler - 1L"` → devrait être `"Growler"`
+
+### Les deux combinés
+- `"Abri de la Tempête - Écume - 473ml"` → devrait être `"Écume"`
 
 Ce script détecte et corrige automatiquement ces cas.
 
@@ -55,11 +65,25 @@ python test_beer_name_cleaning.py
 
 ## 🔍 Logique de détection
 
-Le script détecte qu'un nom doit être nettoyé quand:
+Le script effectue deux types de nettoyage:
+
+### 1. Suppression du préfixe producteur
+
+Le script détecte qu'un préfixe doit être enlevé quand:
 
 1. **Présence d'un séparateur**: Le nom contient un séparateur (`–`, `-`, `:`, `|`, `/`)
 2. **Match avec le producteur**: Les tokens avant le séparateur correspondent au producteur
 3. **Tokens significatifs**: Au moins 70% des tokens significatifs matchent
+
+### 2. Suppression du suffixe volume
+
+Le script enlève automatiquement les suffixes de volume à la fin:
+
+- Pattern détecté: `- XXXml`, `- XXX ml`, `- X.XL`, etc.
+- Séparateurs supportés: `-`, `–`, `—`, `:`
+- Unités supportées: `ml`, `ML`, `mL`, `l`, `L`, `litre`, `litres`
+- Gère les volumes décimaux: `0.5L`, `1.5L`
+- **Ne touche pas** les volumes au milieu du nom
 
 ### Tokens significatifs
 
@@ -70,18 +94,32 @@ Le script ignore les mots courants lors de la comparaison:
 
 ### Exemples
 
-✅ **Nettoyé**
+✅ **Nettoyé - Préfixe seul**
 ```
 Nom:        "Messorem – Not so doomed après tout"
 Producteur: "Messorem Bracitorium"
 Résultat:   "Not so doomed après tout"
 ```
 
-✅ **Nettoyé**
+✅ **Nettoyé - Préfixe seul**
 ```
 Nom:        "Bas Canada – Maréchal"
 Producteur: "Brasserie du Bas Canada"
 Résultat:   "Maréchal"
+```
+
+✅ **Nettoyé - Suffixe seul**
+```
+Nom:        "Fardeau - 473ml"
+Producteur: "Messorem Bracitorium"
+Résultat:   "Fardeau"
+```
+
+✅ **Nettoyé - Les deux**
+```
+Nom:        "Abri de la Tempête - Écume - 473ml"
+Producteur: "Abri de la Tempête"
+Résultat:   "Écume"
 ```
 
 ✅ **Nettoyé avec nom partiel**
@@ -103,6 +141,13 @@ Résultat:   "Fardeau" (inchangé)
 Nom:        "La Belle IPA"
 Producteur: "Brasserie XYZ"
 Résultat:   "La Belle IPA" (inchangé)
+```
+
+❌ **Pas touché** (volume au milieu)
+```
+Nom:        "Édition 473ml Spéciale"
+Producteur: "Brasserie ABC"
+Résultat:   "Édition 473ml Spéciale" (inchangé)
 ```
 
 ## 🛡️ Sécurité
@@ -239,13 +284,18 @@ Tous les tests passent avec succès:
 
 ```
 🧪 TEST DE NETTOYAGE DES NOMS
-- 7 tests réussis, 0 tests échoués
+- 11 tests réussis, 0 tests échoués (incluant préfixe + suffixe combinés)
+
+🧪 TEST DE SUPPRESSION DES SUFFIXES DE VOLUME
+- 9 tests réussis, 0 tests échoués
 
 🧪 TEST DE CAS LIMITES
 - 5 tests réussis, 0 tests échoués
 
 🧪 TEST DE DÉTECTION
 - 4 tests réussis, 0 tests échoués
+
+TOTAL: 29 tests réussis, 0 tests échoués
 ```
 
 ## 📄 Workflow recommandé

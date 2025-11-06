@@ -37,6 +37,28 @@ def test_cleaning():
             "producer": "Brasserie du Bas Canada",
             "expected": "Maréchal"
         },
+        # Cas avec préfixe ET suffixe de volume
+        {
+            "name": "Abri de la Tempête - Écume - 473ml",
+            "producer": "Abri de la Tempête",
+            "expected": "Écume"
+        },
+        {
+            "name": "Sir John – IPA - 355ml",
+            "producer": "Brasserie Sir John",
+            "expected": "IPA"
+        },
+        # Cas avec seulement suffixe de volume
+        {
+            "name": "La Belle IPA - 473ml",
+            "producer": "Brasserie XYZ",
+            "expected": "La Belle IPA"
+        },
+        {
+            "name": "Fardeau - 473 ml",
+            "producer": "Messorem Bracitorium",
+            "expected": "Fardeau"
+        },
         # Cas où le nom ne devrait PAS être nettoyé
         {
             "name": "La Belle IPA",
@@ -69,6 +91,88 @@ def test_cleaning():
         print(f"   Attendu:    {expected}")
 
         if cleaned == expected:
+            print(f"   ✅ PASS")
+            passed += 1
+        else:
+            print(f"   ❌ FAIL")
+            failed += 1
+
+    print(f"\n{'='*60}")
+    print(f"Résultats: {passed} tests réussis, {failed} tests échoués")
+    print("="*60)
+
+
+def test_volume_suffix_removal():
+    """Teste spécifiquement l'enlèvement des suffixes de volume"""
+
+    cleaner = BeerNameCleaner(dry_run=True)
+
+    test_cases = [
+        {
+            "description": "Volume avec tiret et ml collé",
+            "input": "Écume - 473ml",
+            "expected": "Écume"
+        },
+        {
+            "description": "Volume avec tiret et ml espacé",
+            "input": "Écume - 473 ml",
+            "expected": "Écume"
+        },
+        {
+            "description": "Volume avec tiret cadratin",
+            "input": "Écume – 473ml",
+            "expected": "Écume"
+        },
+        {
+            "description": "Volume 355ml",
+            "input": "IPA - 355ml",
+            "expected": "IPA"
+        },
+        {
+            "description": "Volume en litres",
+            "input": "Growler - 1L",
+            "expected": "Growler"
+        },
+        {
+            "description": "Volume décimal",
+            "input": "Bouteille - 0.5L",
+            "expected": "Bouteille"
+        },
+        {
+            "description": "Casse différente (ML)",
+            "input": "Bière - 500ML",
+            "expected": "Bière"
+        },
+        {
+            "description": "Sans volume (ne touche pas)",
+            "input": "Écume",
+            "expected": "Écume"
+        },
+        {
+            "description": "Volume au milieu (ne touche pas)",
+            "input": "Écume 473ml Edition",
+            "expected": "Écume 473ml Edition"
+        }
+    ]
+
+    print("\n" + "="*60)
+    print("🧪 TEST DE SUPPRESSION DES SUFFIXES DE VOLUME")
+    print("="*60)
+
+    passed = 0
+    failed = 0
+
+    for i, test in enumerate(test_cases, 1):
+        print(f"\n{i}. {test['description']}")
+        print(f"   Input:    {test['input']}")
+
+        result = cleaner.remove_volume_suffix(test['input'])
+        expected = test['expected']
+
+        print(f"   Résultat: {result}")
+        print(f"   Attendu:  {expected}")
+
+        if result == expected:
             print(f"   ✅ PASS")
             passed += 1
         else:
@@ -199,6 +303,9 @@ if __name__ == "__main__":
 
     # Tests avec exemples réels
     test_cleaning()
+
+    # Tests de suppression des suffixes de volume
+    test_volume_suffix_removal()
 
     # Tests de cas limites
     test_edge_cases()
