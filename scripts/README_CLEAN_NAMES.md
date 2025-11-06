@@ -284,7 +284,7 @@ Tous les tests passent avec succès:
 
 ```
 🧪 TEST DE NETTOYAGE DES NOMS
-- 11 tests réussis, 0 tests échoués (incluant préfixe + suffixe combinés)
+- 13 tests réussis, 0 tests échoués (incluant noms avec tirets internes)
 
 🧪 TEST DE SUPPRESSION DES SUFFIXES DE VOLUME
 - 9 tests réussis, 0 tests échoués
@@ -295,7 +295,15 @@ Tous les tests passent avec succès:
 🧪 TEST DE DÉTECTION
 - 4 tests réussis, 0 tests échoués
 
-TOTAL: 29 tests réussis, 0 tests échoués
+TOTAL: 31 tests réussis, 0 tests échoués
+```
+
+### Cas spéciaux gérés
+
+✅ **Noms avec tirets internes**
+```
+"Le Saint-Fût - Clé En Main - 473ml"
+→ "Clé En Main" (ne split pas sur "Saint-Fût")
 ```
 
 ## 📄 Workflow recommandé

@@ -69,10 +69,13 @@ class BeerNameCleaner:
         Returns:
             (prefix, separator, rest) ou (None, None, original_name)
         """
-        # Cherche un séparateur dans le nom
+        # Cherche un séparateur AVEC ESPACES autour dans le nom
+        # Cela évite de split sur les tirets dans les noms comme "Saint-Fût"
         for sep in self.SEPARATORS:
-            if sep in beer_name:
-                parts = beer_name.split(sep, 1)
+            # Cherche le séparateur avec espaces autour
+            sep_with_spaces = f" {sep} "
+            if sep_with_spaces in beer_name:
+                parts = beer_name.split(sep_with_spaces, 1)
                 if len(parts) == 2:
                     prefix = parts[0].strip()
                     rest = parts[1].strip()

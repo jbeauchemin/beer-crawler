@@ -48,6 +48,17 @@ def test_cleaning():
             "producer": "Brasserie Sir John",
             "expected": "IPA"
         },
+        # Cas avec tiret DANS le nom du producteur (problème reporté)
+        {
+            "name": "Le Saint-Fût - Clé En Main - 473ml",
+            "producer": "Le Saint-Fût",
+            "expected": "Clé En Main"
+        },
+        {
+            "name": "Trou-du-Diable - Saison - 355ml",
+            "producer": "Trou-du-Diable",
+            "expected": "Saison"
+        },
         # Cas avec seulement suffixe de volume
         {
             "name": "La Belle IPA - 473ml",
@@ -196,8 +207,8 @@ def test_edge_cases():
             "expected": "Saison"
         },
         {
-            "description": "Séparateur deux-points",
-            "beer": {"name": "Dieu du Ciel: Péché Mortel", "producer": "Dieu du Ciel"},
+            "description": "Séparateur deux-points avec espaces",
+            "beer": {"name": "Dieu du Ciel : Péché Mortel", "producer": "Dieu du Ciel"},
             "expected": "Péché Mortel"
         },
         {
