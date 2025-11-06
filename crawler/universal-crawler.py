@@ -128,7 +128,10 @@ class UniversalBeerCrawler:
         url_lower = url.lower()
 
         # Collections de bière (à inclure)
-        beer_keywords = ['biere', 'beer', 'ale', 'ipa', 'stout', 'lager', 'brew']
+        beer_keywords = [
+            'biere', 'beer', 'ale', 'ipa', 'stout', 'lager', 'brew',
+            'bouteille', 'bottle', 'canette', 'can', 'fut', 'keg', 'draft', 'pression'
+        ]
 
         # Collections non-bière (à exclure)
         non_beer_keywords = [
@@ -163,13 +166,15 @@ class UniversalBeerCrawler:
             r'/boutique/?(\?|$)',
             r'/shop/?(\?|$)',
             r'/collections?/',
+            r'/categor(y|ies)/',  # Ajout du pattern categories/category
             r'/catalogue/?(\?|$)',
         ]
 
         for pattern in listing_patterns:
             if re.search(pattern, url, re.I):
-                # Si c'est une collection, vérifier que c'est lié aux bières
-                if '/collection' in url.lower():
+                # Si c'est une collection ou catégorie, vérifier que c'est lié aux bières
+                url_lower = url.lower()
+                if '/collection' in url_lower or '/categor' in url_lower:
                     return self.is_beer_related_collection(url)
                 return True
 
@@ -242,14 +247,15 @@ class UniversalBeerCrawler:
             if not url:
                 continue
 
-            # Debug: afficher les collections trouvées
-            if '/collection' in url.lower():
+            # Debug: afficher les collections/catégories trouvées
+            url_lower = url.lower()
+            if '/collection' in url_lower or '/categor' in url_lower:
                 all_collection_urls.append(url)
 
             if self.is_product_url(url):
                 product_links.add(url)
-            elif '/collection' in url.lower():
-                # C'est une collection, vérifions si c'est lié aux bières
+            elif '/collection' in url_lower or '/categor' in url_lower:
+                # C'est une collection/catégorie, vérifions si c'est lié aux bières
                 if self.is_beer_related_collection(url):
                     listing_pages.add(url)
                 else:
@@ -262,14 +268,14 @@ class UniversalBeerCrawler:
         # Debug: afficher toutes les URLs trouvées
         if self.verbose:
             print(f"\n   🔍 DEBUG: {len(set(all_urls_found))} URLs uniques trouvées sur homepage")
-            print(f"   🔍 DEBUG: {len(set(all_collection_urls))} collections détectées")
+            print(f"   🔍 DEBUG: {len(set(all_collection_urls))} collections/catégories détectées")
             if all_collection_urls:
-                print(f"   🔍 Collections trouvées:")
+                print(f"   🔍 Collections/Catégories trouvées:")
                 for col_url in sorted(set(all_collection_urls))[:10]:
                     is_beer = "✓ BIÈRE" if self.is_beer_related_collection(col_url) else "✗ FILTRÉ"
                     print(f"      {is_beer}: {col_url}")
             else:
-                print("   🔍 Aucune collection trouvée. Exemples de liens:")
+                print("   🔍 Aucune collection/catégorie trouvée. Exemples de liens:")
                 for url in sorted(set(all_urls_found))[:15]:
                     print(f"      - {url}")
 
