@@ -214,11 +214,15 @@ class UniversalBeerCrawler:
     # DÉCOUVERTE DE PRODUITS
     # ============================================================================
 
-    def discover_product_links(self) -> List[str]:
-        """Découvre tous les liens de produits du site"""
+    def discover_product_links(self) -> tuple:
+        """
+        Découvre tous les liens de produits du site
+        Returns: (product_links: List[str], direct_products: List[Dict])
+        """
         print(f"\n📋 Découverte des produits sur {self.base_url}\n")
 
         product_links = set()
+        direct_products = []  # Produits extraits directement depuis pages single-page
         listing_pages = set()
 
         # 1. Analyse homepage
@@ -288,20 +292,34 @@ class UniversalBeerCrawler:
         # 2. Explore les pages de listing
         for listing_url in sorted(listing_pages):
             print(f"\n📄 Exploration: {listing_url}")
-            products = self._crawl_listing_page(listing_url)
-            product_links.update(products)
-            print(f"   ✓ {len(products)} produits trouvés")
+            result = self._crawl_listing_page(listing_url)
+
+            # Vérifier si c'est une liste de dicts (single-page) ou un set d'URLs
+            if result and isinstance(result, list) and len(result) > 0 and isinstance(result[0], dict):
+                # C'est une page single-page avec produits extraits directement
+                direct_products.extend(result)
+                print(f"   ✓ {len(result)} produits extraits (mode single-page)")
+            else:
+                # C'est un set d'URLs (mode normal)
+                product_links.update(result)
+                print(f"   ✓ {len(result)} produits trouvés")
 
         self.config['listing_pages'] = sorted(listing_pages)
 
-        print(f"\n✅ Total: {len(product_links)} produits découverts\n")
+        total_count = len(product_links) + len(direct_products)
+        print(f"\n✅ Total: {total_count} produits découverts")
+        if direct_products:
+            print(f"   → {len(direct_products)} extraits directement (mode single-page)")
+        if product_links:
+            print(f"   → {len(product_links)} liens de produits à crawler\n")
 
         # Sauvegarde les liens pour debug
-        with open('product_links_discovered.txt', 'w', encoding='utf-8') as f:
-            for link in sorted(product_links):
-                f.write(link + '\n')
+        if product_links:
+            with open('product_links_discovered.txt', 'w', encoding='utf-8') as f:
+                for link in sorted(product_links):
+                    f.write(link + '\n')
 
-        return sorted(product_links)
+        return sorted(product_links), direct_products
 
     def _crawl_listing_page(self, url: str, max_pages: int = 50) -> Set[str]:
         """Crawle une page de listing et sa pagination"""
@@ -330,7 +348,18 @@ class UniversalBeerCrawler:
                         page_products.add(product_url)
                         products.add(product_url)
 
-                # Si aucun produit, c'est probablement la fin
+                # Si aucun produit trouvé, peut-être que c'est une page "single-page"
+                # où tous les produits sont listés directement
+                if not page_products and len(visited) == 1:
+                    # Essayer d'extraire les produits directement depuis cette page
+                    direct_products = self.extract_products_from_single_page(soup, current_url)
+                    if direct_products:
+                        print(f"      → Détection page single-page: {len(direct_products)} produits extraits")
+                        # Retourner les produits extraits directement (pas des URLs)
+                        # On va les gérer différemment dans le crawl principal
+                        return direct_products
+
+                # Si toujours aucun produit, c'est probablement la fin
                 if not page_products:
                     break
 
@@ -350,6 +379,154 @@ class UniversalBeerCrawler:
                 continue
 
         return products
+
+    def extract_products_from_single_page(self, soup: BeautifulSoup, page_url: str) -> List[Dict]:
+        """
+        Extrait les produits directement depuis une page de listing "single-page"
+        où tous les produits sont affichés sur une seule page
+        """
+        products = []
+
+        # Chercher des blocs de produits (patterns communs)
+        product_blocks = []
+
+        # Pattern 1: Articles/divs avec classes courantes
+        for class_pattern in [
+            r'product', r'item', r'beer', r'biere',
+            r'card', r'entry', r'post',
+        ]:
+            blocks = soup.find_all(['article', 'div', 'section'], class_=re.compile(class_pattern, re.I))
+            if blocks:
+                product_blocks.extend(blocks)
+
+        # Pattern 2: Éléments avec ID contenant des ancres (comme #disco-soleil)
+        elements_with_id = soup.find_all(id=True)
+        for elem in elements_with_id:
+            elem_id = elem.get('id', '')
+            # Si l'ID ne contient pas de mots génériques, c'est probablement un produit
+            if elem_id and not any(x in elem_id.lower() for x in ['header', 'footer', 'nav', 'menu', 'sidebar', 'main', 'content-area']):
+                # Vérifier que l'élément contient du contenu substantiel
+                text = elem.get_text(strip=True)
+                if text and len(text) > 50:  # Au moins 50 caractères
+                    product_blocks.append(elem)
+
+        # Déduplique les blocs
+        unique_blocks = []
+        seen_texts = set()
+        for block in product_blocks:
+            block_text = block.get_text(strip=True)[:100]  # Premier 100 chars
+            if block_text not in seen_texts and len(block_text) > 30:
+                unique_blocks.append(block)
+                seen_texts.add(block_text)
+
+        print(f"      🔍 {len(unique_blocks)} blocs de produits potentiels détectés")
+
+        # Extraire les données de chaque bloc
+        for block in unique_blocks:
+            try:
+                beer = self._extract_product_from_block(block, page_url)
+                if beer and beer.get('name'):  # Au minimum un nom
+                    products.append(beer)
+            except Exception as e:
+                if self.verbose:
+                    print(f"      ⚠️  Erreur extraction bloc: {e}")
+                continue
+
+        return products
+
+    def _extract_product_from_block(self, block: BeautifulSoup, base_url: str) -> Optional[Dict]:
+        """Extrait les données d'un produit depuis un bloc HTML"""
+        beer = {
+            'url': base_url,
+            'name': None,
+            'price': None,
+            'producer': None,
+            'style': None,
+            'volume': None,
+            'alcohol': None,
+            'ibu': None,
+            'description': None,
+            'photo_url': None,
+        }
+
+        # Si le bloc a un ID, l'ajouter à l'URL comme ancre
+        block_id = block.get('id')
+        if block_id:
+            beer['url'] = f"{base_url}#{block_id}"
+
+        # NOM: Chercher dans les titres (h1-h6)
+        for heading_level in range(1, 7):
+            heading = block.find(f'h{heading_level}')
+            if heading:
+                beer['name'] = heading.get_text(strip=True)
+                break
+
+        # Si pas de titre, chercher dans les éléments avec class contenant "title", "name"
+        if not beer['name']:
+            for elem in block.find_all(class_=re.compile(r'(title|name)', re.I)):
+                text = elem.get_text(strip=True)
+                if text and len(text) < 100:  # Pas trop long
+                    beer['name'] = text
+                    break
+
+        # PRIX: Chercher symboles monétaires ou classes "price"
+        for elem in block.find_all(class_=re.compile(r'price', re.I)):
+            text = elem.get_text(strip=True)
+            if any(c in text for c in ['$', '€', 'CAD']):
+                beer['price'] = text
+                break
+
+        # Si pas trouvé, chercher dans tout le bloc
+        if not beer['price']:
+            all_text = block.get_text()
+            price_match = re.search(r'(\d+[.,]\d{2}\s*\$)', all_text)
+            if price_match:
+                beer['price'] = price_match.group(1)
+
+        # MÉTADONNÉES: Chercher dans tout le texte du bloc
+        block_text = block.get_text(' ', strip=True)
+
+        # Alcool
+        alc_match = re.search(r'(\d+\.?\d*)\s*%', block_text)
+        if alc_match:
+            alc = float(alc_match.group(1))
+            if 0 <= alc <= 20:
+                beer['alcohol'] = alc_match.group(1) + '%'
+
+        # Volume
+        vol_match = re.search(r'(\d{2,5})\s*ml', block_text, re.I)
+        if vol_match:
+            vol = int(vol_match.group(1))
+            if 100 <= vol <= 5000:
+                beer['volume'] = vol_match.group(1) + 'ml'
+
+        # IBU
+        ibu_match = re.search(r'(\d+)\s*IBU', block_text, re.I)
+        if ibu_match:
+            beer['ibu'] = ibu_match.group(1)
+
+        # DESCRIPTION: Chercher paragraphes ou divs contenant texte
+        desc_elems = block.find_all(['p', 'div'], class_=re.compile(r'(desc|content|text)', re.I))
+        if desc_elems:
+            desc_parts = []
+            for elem in desc_elems:
+                text = elem.get_text(strip=True)
+                if text and len(text) > 20:
+                    desc_parts.append(text)
+            if desc_parts:
+                beer['description'] = ' '.join(desc_parts)[:500]  # Max 500 chars
+
+        # IMAGE: Chercher dans le bloc
+        img = block.find('img')
+        if img:
+            src = img.get('data-src') or img.get('src')
+            if src:
+                if src.startswith('http'):
+                    beer['photo_url'] = src.split('?')[0]
+                elif src.startswith('/'):
+                    beer['photo_url'] = self.base_url + src.split('?')[0]
+
+        return beer if beer.get('name') else None
 
     # ============================================================================
     # EXTRACTION INTELLIGENTE
@@ -610,41 +787,49 @@ class UniversalBeerCrawler:
 
         try:
             # 1. Découverte des produits
-            product_links = self.discover_product_links()
+            product_links, direct_products = self.discover_product_links()
 
-            if not product_links:
+            if not product_links and not direct_products:
                 print("\n❌ Aucun produit trouvé!")
                 return []
 
-            # 2. Extraction des données
-            print(f"\n📸 Extraction des données de {len(product_links)} produits...\n")
+            # 2. Ajouter les produits extraits directement
+            if direct_products:
+                print(f"\n📦 Ajout de {len(direct_products)} produits extraits en mode single-page...")
+                self.beers.extend(direct_products)
+                self.save_progress(output_filename)
+                print(f"   ✓ {len(direct_products)} bières ajoutées\n")
 
-            for i, url in enumerate(product_links, 1):
-                slug = url.split('/')[-1] if url.split('/')[-1] else url.split('/')[-2]
-                print(f"[{i}/{len(product_links)}] {slug}")
+            # 3. Extraction des données depuis les URLs
+            if product_links:
+                print(f"\n📸 Extraction des données de {len(product_links)} produits...\n")
 
-                beer = self.extract_beer_data(url)
+                for i, url in enumerate(product_links, 1):
+                    slug = url.split('/')[-1] if url.split('/')[-1] else url.split('/')[-2]
+                    print(f"[{i}/{len(product_links)}] {slug}")
 
-                if beer:
-                    self.beers.append(beer)
+                    beer = self.extract_beer_data(url)
 
-                    # Affiche résumé
-                    print(f"  ✓ {beer.get('name', 'N/A')}")
-                    if beer.get('price'):
-                        print(f"  💰 {beer['price']}")
-                    if beer.get('alcohol'):
-                        print(f"  🍺 {beer['alcohol']}", end='')
-                        if beer.get('volume'):
-                            print(f" - {beer['volume']}", end='')
-                        print()
-                    if beer.get('photo_url'):
-                        print(f"  📸 Photo disponible")
+                    if beer:
+                        self.beers.append(beer)
 
-                    # Sauvegarde progressive
-                    self.save_progress(output_filename)
-                    print(f"  💾 Sauvegardé ({len(self.beers)} bières)\n")
+                        # Affiche résumé
+                        print(f"  ✓ {beer.get('name', 'N/A')}")
+                        if beer.get('price'):
+                            print(f"  💰 {beer['price']}")
+                        if beer.get('alcohol'):
+                            print(f"  🍺 {beer['alcohol']}", end='')
+                            if beer.get('volume'):
+                                print(f" - {beer['volume']}", end='')
+                            print()
+                        if beer.get('photo_url'):
+                            print(f"  📸 Photo disponible")
 
-                time.sleep(1)  # Pause entre requêtes
+                        # Sauvegarde progressive
+                        self.save_progress(output_filename)
+                        print(f"  💾 Sauvegardé ({len(self.beers)} bières)\n")
+
+                    time.sleep(1)  # Pause entre requêtes
 
             # 3. Statistiques finales
             print("\n" + "="*80)
