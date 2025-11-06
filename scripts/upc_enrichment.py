@@ -2,9 +2,17 @@ import json
 import time
 import urllib.parse
 import urllib.request
+import ssl
 from pathlib import Path
 from typing import Dict, List, Optional
 import re
+
+# Try to import requests (better HTTP handling)
+try:
+    import requests
+    HAS_REQUESTS = True
+except ImportError:
+    HAS_REQUESTS = False
 
 
 class UPCEnricher:
@@ -148,42 +156,63 @@ class UPCEnricher:
 
         # Prépare les paramètres de l'URL
         params = {
+            'query': query,
             'page': '0',
             'hitsPerPage': '50',
-            'query': query,
             'x-algolia-api-key': self.API_KEY,
             'x-algolia-application-id': self.APP_ID
+        }
+
+        # Headers pour l'API (simule un navigateur pour éviter le blocage)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://consignaction.ca/',
+            'Origin': 'https://consignaction.ca',
+            'Accept': 'application/json',
+            'Accept-Language': 'fr-CA,fr;q=0.9,en;q=0.8'
         }
 
         url = f"{self.API_URL}?{urllib.parse.urlencode(params)}"
 
         try:
             # Fait la requête
-            req = urllib.request.Request(url)
-            with urllib.request.urlopen(req, timeout=10) as response:
-                data = json.loads(response.read().decode('utf-8'))
+            if HAS_REQUESTS:
+                # Utilise requests si disponible (meilleure gestion des certificats)
+                response = requests.get(url, headers=headers, timeout=10)
+                response.raise_for_status()
+                data = response.json()
+            else:
+                # Fallback vers urllib avec désactivation de la vérification SSL
+                # Crée un contexte SSL qui n'effectue pas de vérification
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
 
-                # Analyse les résultats
-                hits = data.get('hits', [])
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req, timeout=10, context=ctx) as response:
+                    data = json.loads(response.read().decode('utf-8'))
 
-                if not hits:
-                    return None
+            # Analyse les résultats
+            hits = data.get('hits', [])
 
-                # Cherche un match exact
-                for hit in hits:
-                    if self.is_exact_match(beer, hit):
-                        upc = hit.get('upc')
-                        if upc:
-                            print(f"  ✓ UPC trouvé: {upc} pour {name}")
-                            return upc
-
-                # Affiche les résultats qui n'ont pas matché (pour debug)
-                if hits:
-                    print(f"  ⚠ {len(hits)} résultat(s) trouvé(s) mais aucun match exact pour: {name}")
-                    for i, hit in enumerate(hits[:3], 1):
-                        print(f"    {i}. {hit.get('product')} ({hit.get('Maker')})")
-
+            if not hits:
                 return None
+
+            # Cherche un match exact
+            for hit in hits:
+                if self.is_exact_match(beer, hit):
+                    upc = hit.get('upc')
+                    if upc:
+                        print(f"  ✓ UPC trouvé: {upc} pour {name}")
+                        return upc
+
+            # Affiche les résultats qui n'ont pas matché (pour debug)
+            if hits:
+                print(f"  ⚠ {len(hits)} résultat(s) trouvé(s) mais aucun match exact pour: {name}")
+                for i, hit in enumerate(hits[:3], 1):
+                    print(f"    {i}. {hit.get('product')} ({hit.get('Maker')})")
+
+            return None
 
         except urllib.error.HTTPError as e:
             print(f"  ✗ Erreur HTTP {e.code} pour: {name}")
@@ -280,6 +309,10 @@ def main():
     print(f"Fichier d'entrée:  {input_file}")
     print(f"Fichier de sortie: {output_file}")
     print(f"Fichier de backup: {backup_file}")
+    if HAS_REQUESTS:
+        print("Méthode HTTP:      requests (recommandé)")
+    else:
+        print("Méthode HTTP:      urllib (SSL non-vérifié)")
     print("="*60)
 
     # Charge les données
