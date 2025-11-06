@@ -212,6 +212,22 @@ class UPCEnricher:
                 for i, hit in enumerate(hits[:3], 1):
                     print(f"    {i}. {hit.get('product')} ({hit.get('Maker')})")
 
+                # Debug: montre pourquoi le premier résultat n'a pas matché
+                if len(hits) > 0:
+                    print(f"\n  🔍 Debug du premier résultat:")
+                    first_hit = hits[0]
+                    print(f"     Beer: '{beer.get('name')}' / '{beer.get('producer')}'")
+                    print(f"     API:  '{first_hit.get('product')}' / '{first_hit.get('Maker')}'")
+
+                    beer_name_norm = self.normalize_text(beer.get('name', ''))
+                    api_product_norm = self.normalize_text(first_hit.get('product', ''))
+                    beer_producer_norm = self.normalize_text(beer.get('producer', ''))
+                    api_maker_norm = self.normalize_text(first_hit.get('Maker', ''))
+
+                    print(f"     Normalized:")
+                    print(f"       Name: '{beer_name_norm}' vs '{api_product_norm}' → Match: {beer_name_norm == api_product_norm}")
+                    print(f"       Prod: '{beer_producer_norm}' vs '{api_maker_norm}'")
+
             return None
 
         except urllib.error.HTTPError as e:
