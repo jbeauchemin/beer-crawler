@@ -32,10 +32,11 @@ class UniversalBeerCrawler:
     Crawler universel qui s'adapte automatiquement à n'importe quel site de brasserie
     """
 
-    def __init__(self, base_url: str, headless: bool = True):
+    def __init__(self, base_url: str, headless: bool = True, verbose: bool = False):
         self.base_url = base_url.rstrip('/')
         self.domain = urlparse(base_url).netloc
         self.beers = []
+        self.verbose = verbose
 
         # Configuration Chrome
         chrome_options = Options()
@@ -227,10 +228,23 @@ class UniversalBeerCrawler:
 
         # Trouve tous les liens
         filtered_collections = []
+        all_collection_urls = []
+        all_urls_found = []
+
         for a in soup.find_all('a', href=True):
-            url = self.normalize_url(a['href'])
+            href = a['href']
+            url = self.normalize_url(href)
+
+            # Debug: sauvegarder tous les liens
+            if self.verbose and url:
+                all_urls_found.append(url)
+
             if not url:
                 continue
+
+            # Debug: afficher les collections trouvées
+            if '/collection' in url.lower():
+                all_collection_urls.append(url)
 
             if self.is_product_url(url):
                 product_links.add(url)
@@ -245,10 +259,25 @@ class UniversalBeerCrawler:
             elif self.is_listing_url(url):
                 listing_pages.add(url)
 
-        print(f"   ✓ {len(product_links)} produits trouvés sur homepage")
+        # Debug: afficher toutes les URLs trouvées
+        if self.verbose:
+            print(f"\n   🔍 DEBUG: {len(set(all_urls_found))} URLs uniques trouvées sur homepage")
+            print(f"   🔍 DEBUG: {len(set(all_collection_urls))} collections détectées")
+            if all_collection_urls:
+                print(f"   🔍 Collections trouvées:")
+                for col_url in sorted(set(all_collection_urls))[:10]:
+                    is_beer = "✓ BIÈRE" if self.is_beer_related_collection(col_url) else "✗ FILTRÉ"
+                    print(f"      {is_beer}: {col_url}")
+            else:
+                print("   🔍 Aucune collection trouvée. Exemples de liens:")
+                for url in sorted(set(all_urls_found))[:15]:
+                    print(f"      - {url}")
+
+        print(f"\n   ✓ {len(product_links)} produits trouvés sur homepage")
         print(f"   ✓ {len(listing_pages)} pages de listing trouvées")
         if filtered_collections:
-            print(f"   ⊘ {len(set(filtered_collections))} collections filtrées (non-bière): {', '.join(set(filtered_collections)[:5])}")
+            unique_filtered = list(set(filtered_collections))[:5]
+            print(f"   ⊘ {len(set(filtered_collections))} collections filtrées (non-bière): {', '.join(unique_filtered)}")
 
         # 2. Explore les pages de listing
         for listing_url in sorted(listing_pages):
@@ -639,23 +668,30 @@ class UniversalBeerCrawler:
 if __name__ == "__main__":
     import sys
 
-    if len(sys.argv) < 2:
+    # Parse arguments
+    verbose = '--verbose' in sys.argv or '-v' in sys.argv
+    args = [arg for arg in sys.argv[1:] if not arg.startswith('-')]
+
+    if len(args) < 1:
         print("="*80)
         print("🍺 UNIVERSAL BEER CRAWLER")
         print("="*80)
-        print("\nUsage: python universal-crawler.py <URL> [output_file]")
+        print("\nUsage: python universal-crawler.py <URL> [output_file] [--verbose]")
         print("\nExemples:")
         print("  python universal-crawler.py https://dieuduciel.com")
         print("  python universal-crawler.py https://microbrasserie.com beers_custom.json")
+        print("  python universal-crawler.py https://dieuduciel.com --verbose")
+        print("\nOptions:")
+        print("  --verbose, -v  Affiche les détails de debug")
         print("\nCe crawler s'adapte automatiquement à n'importe quel site de brasserie!")
         print("="*80)
         sys.exit(1)
 
-    base_url = sys.argv[1]
-    output_file = sys.argv[2] if len(sys.argv) > 2 else 'beers_universal.json'
+    base_url = args[0]
+    output_file = args[1] if len(args) > 1 else 'beers_universal.json'
 
     # Lance le crawler
-    crawler = UniversalBeerCrawler(base_url, headless=True)
+    crawler = UniversalBeerCrawler(base_url, headless=True, verbose=verbose)
     beers = crawler.crawl(output_file)
 
     if beers:
