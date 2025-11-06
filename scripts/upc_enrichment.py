@@ -249,10 +249,11 @@ class UPCEnricher:
             # Vérifie si la bière a déjà un UPC
             if beer.get('upc'):
                 self.stats['already_has_upc'] += 1
+                print(f"{i+1}. ⏭️  Skipped: {beer.get('name')} (UPC existant: {beer.get('upc')})")
                 continue
 
             # Recherche le UPC
-            print(f"{i+1}. Recherche UPC pour: {beer.get('name')} ({beer.get('producer')})")
+            print(f"{i+1}. 🔍 Recherche UPC pour: {beer.get('name')} ({beer.get('producer')})")
 
             upc = self.search_upc(beer)
 

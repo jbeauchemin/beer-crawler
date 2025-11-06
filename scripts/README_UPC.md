@@ -23,9 +23,15 @@ python upc_enrichment.py
 Le script va:
 1. Charger votre fichier `beers_merged.json`
 2. Créer un backup automatique (`beers_merged_backup.json`)
-3. Pour chaque bière sans UPC, rechercher dans l'API Consignaction
-4. Ajouter le code UPC si un match exact est trouvé
-5. Sauvegarder le fichier enrichi
+3. Pour chaque bière **sans UPC**, rechercher dans l'API Consignaction
+4. **Skip automatiquement** les bières qui ont déjà un UPC
+5. Ajouter le code UPC si un match exact est trouvé
+6. Sauvegarder le fichier enrichi
+
+**Note**: Les bières qui ont déjà un champ `upc` sont automatiquement ignorées. Le script affichera:
+```
+⏭️  Skipped: Nom de la bière (UPC existant: 725330860345)
+```
 
 ### Tester la logique de matching
 
