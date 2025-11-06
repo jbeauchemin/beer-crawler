@@ -122,6 +122,36 @@ class UniversalBeerCrawler:
 
         return False
 
+    def is_beer_related_collection(self, url: str) -> bool:
+        """Vérifie si une collection est liée aux bières (pas vêtements, verres, etc.)"""
+        url_lower = url.lower()
+
+        # Collections de bière (à inclure)
+        beer_keywords = ['biere', 'beer', 'ale', 'ipa', 'stout', 'lager', 'brew']
+
+        # Collections non-bière (à exclure)
+        non_beer_keywords = [
+            'vetement', 'clothing', 'apparel', 'shirt', 't-shirt', 'hoodie',
+            'tuque', 'casquette', 'hat', 'cap', 'bonnet',
+            'verre', 'glass', 'cup', 'mug',
+            'accessoire', 'accessory', 'merchandise', 'merch',
+            'cadeau', 'gift', 'carte', 'card'
+        ]
+
+        # Si contient un mot-clé non-bière, exclure
+        for keyword in non_beer_keywords:
+            if keyword in url_lower:
+                return False
+
+        # Si contient un mot-clé bière, inclure
+        for keyword in beer_keywords:
+            if keyword in url_lower:
+                return True
+
+        # Par défaut, si c'est une collection sans mot-clé spécifique, on l'inclut
+        # (pour les sites qui ont juste /collections/all ou /products)
+        return True
+
     def is_listing_url(self, url: str) -> bool:
         """Détermine si une URL est une page de liste de produits"""
         listing_patterns = [
@@ -137,6 +167,9 @@ class UniversalBeerCrawler:
 
         for pattern in listing_patterns:
             if re.search(pattern, url, re.I):
+                # Si c'est une collection, vérifier que c'est lié aux bières
+                if '/collection' in url.lower():
+                    return self.is_beer_related_collection(url)
                 return True
 
         return False
@@ -154,8 +187,12 @@ class UniversalBeerCrawler:
         else:
             return None  # Ignore les URLs relatives complexes
 
-        # Garde seulement le même domaine
-        if self.domain not in url:
+        # Garde seulement le même domaine (ou sous-domaines)
+        url_domain = urlparse(url).netloc
+        base_domain = '.'.join(self.domain.split('.')[-2:])  # ex: dieuduciel.com
+        url_base_domain = '.'.join(url_domain.split('.')[-2:])
+
+        if base_domain != url_base_domain:
             return None
 
         # Nettoie
@@ -189,6 +226,7 @@ class UniversalBeerCrawler:
         print(f"   ✓ Plateforme: {self.config['platform']}")
 
         # Trouve tous les liens
+        filtered_collections = []
         for a in soup.find_all('a', href=True):
             url = self.normalize_url(a['href'])
             if not url:
@@ -196,11 +234,21 @@ class UniversalBeerCrawler:
 
             if self.is_product_url(url):
                 product_links.add(url)
+            elif '/collection' in url.lower():
+                # C'est une collection, vérifions si c'est lié aux bières
+                if self.is_beer_related_collection(url):
+                    listing_pages.add(url)
+                else:
+                    # Collection filtrée (pas de bière)
+                    collection_name = url.split('/')[-1]
+                    filtered_collections.append(collection_name)
             elif self.is_listing_url(url):
                 listing_pages.add(url)
 
         print(f"   ✓ {len(product_links)} produits trouvés sur homepage")
         print(f"   ✓ {len(listing_pages)} pages de listing trouvées")
+        if filtered_collections:
+            print(f"   ⊘ {len(set(filtered_collections))} collections filtrées (non-bière): {', '.join(set(filtered_collections)[:5])}")
 
         # 2. Explore les pages de listing
         for listing_url in sorted(listing_pages):
