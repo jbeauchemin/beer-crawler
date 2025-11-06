@@ -208,5 +208,6 @@ __marimo__/
 
 # Ignore all files in datas files
 datas/
+data/
 images/
 out/
