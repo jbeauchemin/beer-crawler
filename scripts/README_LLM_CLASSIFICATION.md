@@ -35,14 +35,25 @@ Ce guide explique comment utiliser les scripts de classification automatique des
 
 ## 🎯 Scripts disponibles
 
-### **classify_beers_with_retry.py** ⭐ RECOMMANDÉ
+### **classify_beers_parallel.py** 🚀 NOUVEAU - RECOMMANDÉ
 
-Script robuste avec retry automatique et format Prisma-ready:
+Script parallèle avec workers concurrents (2-3x plus rapide!):
+- ⚡ **2 workers = 2x plus rapide** (~15-25h au lieu de 30-50h)
+- ⚡ **3 workers = 3x plus rapide** (~10-17h) si stable
 - ✅ Retry automatique (3 tentatives par bière)
-- ✅ Progress tracking (reprend où c'était rendu si interrompu)
+- ✅ Thread-safe (aucune perte de données)
+- ✅ Format Prisma-ready
+- ✅ Même qualité que version séquentielle
+- 💡 **Parfait pour M2 32GB avec Mixtral**
+
+### **classify_beers_with_retry.py** ⭐ SÉQUENTIEL
+
+Script robuste séquentiel (1 bière à la fois):
+- ✅ Retry automatique (3 tentatives par bière)
+- ✅ Progress tracking avec --resume
 - ✅ Sauvegarde incrémentale (tous les 10 bières)
-- ✅ Format Prisma-ready (prêt pour upsert dans DB)
-- ✅ Garde rawData complètes
+- ✅ Format Prisma-ready
+- 🐢 Plus lent mais très stable
 
 ### **classify_beers_llm.py**
 
@@ -123,9 +134,47 @@ python scripts/classify_beers_llm.py \
   --limit 20
 ```
 
-### Étape 3: Classification complète avec retry ⭐
+### Étape 3A: Classification parallèle (RECOMMANDÉ) 🚀
 
-Une fois satisfait des résultats, lance sur toutes les bières avec retry automatique:
+**Option la plus rapide avec Mixtral! 2-3x plus vite sans perte de qualité.**
+
+```bash
+# Avec 2 workers (safe pour M2 32GB)
+python scripts/classify_beers_parallel.py \
+  datas/beers_cleaned.json \
+  datas/beers_prisma_final.json \
+  --workers 2
+```
+
+**Temps estimé avec 2 workers:**
+- ~4000 bières
+- **Total: ~15-25 heures** (au lieu de 30-50h!) 🎉
+- Sauvegarde tous les 10 bières
+- Retry automatique par bière
+
+**Pour aller encore plus vite (si stable):**
+```bash
+# Avec 3 workers (plus agressif)
+python scripts/classify_beers_parallel.py \
+  datas/beers_cleaned.json \
+  datas/beers_prisma_final.json \
+  --workers 3
+```
+
+**Temps estimé avec 3 workers:**
+- **Total: ~10-17 heures** 🚀
+- ⚠️ Monitor ta RAM - si ça swap, reviens à 2 workers
+
+**Pourquoi parallèle?**
+- ✅ Même qualité (même modèle, même prompt, même température)
+- ✅ Thread-safe (pas de corruption de données)
+- ✅ Retry automatique par bière
+- ✅ 2-3x plus rapide
+- ✅ Gratuit (pas d'API)
+
+### Étape 3B: Classification séquentielle (alternative)
+
+Si tu préfères plus stable (1 bière à la fois):
 
 ```bash
 python scripts/classify_beers_with_retry.py \
@@ -133,30 +182,18 @@ python scripts/classify_beers_with_retry.py \
   datas/beers_prisma_final.json
 ```
 
-**Temps estimé avec Mixtral:**
+**Temps estimé séquentiel:**
 - ~4000 bières
-- ~30-45 secondes par bière (Mixtral est gourmand mais puissant)
+- ~30-45 secondes par bière
 - **Total: ~30-50 heures** 😅
-- **Mais:** Sauvegarde tous les 10 bières, peut reprendre si interrompu!
 
-**Features du script:**
-- ✅ **Retry automatique**: 3 tentatives par bière
-- ✅ **Sauvegarde incrémentale**: Tous les 10 bières
-- ✅ **Progress tracking**: Fichier `.progress` pour suivre l'avancement
-- ✅ **Reprise**: Si interrompu, lance `--resume` pour continuer
-
-**Si le script est interrompu (Ctrl+C, crash, etc.):**
+**Si interrompu:**
 ```bash
-# Reprend exactement où c'était rendu!
 python scripts/classify_beers_with_retry.py \
   datas/beers_cleaned.json \
   datas/beers_prisma_final.json \
   --resume
 ```
-
-**Optimisations possibles:**
-1. Utiliser un modèle plus petit: `--model mistral:latest` (10x plus rapide, qualité légèrement inférieure)
-2. Lancer overnight et laisser tourner
 
 ### Étape 4: Validation finale
 
