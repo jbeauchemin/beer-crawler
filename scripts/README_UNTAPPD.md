@@ -28,24 +28,50 @@ python untappd_enrichment.py
 
 ---
 
-### 2. `complete_untappd_missing.py` - Complétion des données manquantes (séquentiel)
+### 2. `complete_untappd_missing_parallel.py` - Complétion parallèle (RECOMMANDÉ pour M1/M2)
 
-**⭐ NOUVEAU - Utilise celui-ci pour compléter les données manquantes!**
+**⭐ NOUVEAU - Utilise celui-ci pour compléter les données manquantes rapidement!**
 
 Pour les **bières qui ont déjà `untappd_id` mais `untappd_description: null` ou `untappd_style: null`**:
+
+```bash
+cd scripts
+python complete_untappd_missing_parallel.py 8  # 8 workers pour M1/M2
+```
+
+**Que fait-il?**
+- Filtre uniquement les bières avec `untappd_id` mais données manquantes
+- Lance plusieurs ChromeDriver en parallèle (1 par worker)
+- Scrape les pages Untappd pour compléter description et/ou style
+- Fusionne les données dans `descriptions['untappd']` et `styles['untappd']`
+- Normalise les URLs (http → https)
+
+**Temps:**
+- 2900 bières avec 8 workers: ~15-20 min
+- 2900 bières avec 4 workers: ~30-35 min
+
+**Recommandations:**
+- MacBook M1/M2: 8 workers
+- MacBook Intel: 4 workers
+- Serveur: 4-6 workers
+
+---
+
+### 2b. `complete_untappd_missing.py` - Complétion séquentielle (si problèmes avec parallèle)
+
+Version séquentielle (1 seul core):
 
 ```bash
 cd scripts
 python complete_untappd_missing.py
 ```
 
-**Que fait-il?**
-- Filtre uniquement les bières avec `untappd_id` mais données manquantes
-- Scrape leur page Untappd pour compléter description et/ou style
-- Fusionne les données dans `descriptions['untappd']` et `styles['untappd']`
-- Normalise les URLs (http → https)
+**Utilise cette version si:**
+- La version parallèle cause des problèmes
+- Tu as peu de RAM disponible
+- Tu préfères une approche plus stable
 
-**Temps:** ~12-20 min pour 373 bières (~2 sec/bière)
+**Temps:** ~12-20 min pour 373 bières, ~2h pour 2900 bières (~2.5 sec/bière)
 
 **Exemple de sortie:**
 ```
@@ -140,11 +166,12 @@ Tu devrais voir:
 
 ## 📊 Comparaison des scripts
 
-| Script | Vitesse | Données complètes | Cas d'usage |
-|--------|---------|-------------------|-------------|
-| `parallel_enrichment.py` | ⚡⚡⚡ Très rapide | ❌ Non (API only) | Nouvelles bières, recherche rapide |
-| `untappd_enrichment.py` | ⚡ Lent | ✅ Oui (API + scraping) | Nouvelles bières, données complètes |
-| `complete_untappd_missing.py` | ⚡⚡ Moyen | ✅ Oui (scraping only) | **Compléter données manquantes** |
+| Script | Vitesse | Données complètes | Multiprocessing | Cas d'usage |
+|--------|---------|-------------------|-----------------|-------------|
+| `parallel_enrichment.py` | ⚡⚡⚡ Très rapide | ❌ Non (API only) | ✅ Oui | Nouvelles bières, recherche rapide |
+| `untappd_enrichment.py` | ⚡ Lent | ✅ Oui (API + scraping) | ❌ Non | Nouvelles bières, données complètes |
+| `complete_untappd_missing_parallel.py` | ⚡⚡⚡ Rapide | ✅ Oui (scraping) | ✅ Oui | **Compléter données manquantes (RECOMMANDÉ)** |
+| `complete_untappd_missing.py` | ⚡⚡ Moyen | ✅ Oui (scraping) | ❌ Non | Compléter données (fallback) |
 
 ---
 
@@ -255,14 +282,35 @@ Untappd: Fardeau (Different Brewery)
 
 ## ⚡ Performance
 
+### API seulement (pas de scraping)
 - **parallel_enrichment.py**: 2 requêtes/sec × 10 workers = ~20 bières/sec
   - Pour 1800 bières: ~5-10 minutes
+  - Pour 2900 bières: ~8-15 minutes
 
-- **untappd_enrichment.py**: 2 requêtes/sec + 2-3 sec scraping = ~0.5 bière/sec
-  - Pour 1800 bières: ~60-90 minutes
+### Scraping complet (avec description et style)
+- **complete_untappd_missing_parallel.py** (8 workers M1/M2):
+  - Pour 373 bières: ~3-5 minutes
+  - Pour 2900 bières: ~15-20 minutes
+  - Vitesse: ~2.4 bières/sec
 
-- **complete_untappd_missing.py**: ~2-3 sec scraping = ~0.5 bière/sec
+- **complete_untappd_missing_parallel.py** (4 workers):
+  - Pour 373 bières: ~6-10 minutes
+  - Pour 2900 bières: ~30-35 minutes
+  - Vitesse: ~1.2 bières/sec
+
+- **untappd_enrichment.py** (séquentiel): ~2.5 sec/bière
+  - Pour 1800 bières: ~75-90 minutes
+  - Pour 2900 bières: ~2 heures
+  - Vitesse: ~0.4 bière/sec
+
+- **complete_untappd_missing.py** (séquentiel): ~2.5 sec/bière
   - Pour 373 bières: ~12-20 minutes
+  - Pour 2900 bières: ~2 heures
+  - Vitesse: ~0.4 bière/sec
+
+### Gain avec parallélisation (8 workers vs séquentiel)
+- **8x plus rapide** pour le scraping Untappd
+- 2900 bières: 15-20 min vs 2h = **économie de ~1h40**
 
 ---
 
