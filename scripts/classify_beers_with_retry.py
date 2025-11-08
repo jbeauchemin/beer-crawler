@@ -125,16 +125,30 @@ Descriptions:
 
    TONE: Like recommending beer to a friend at a bar! Use:
    - Exclamation points!
-   - "Tu vas adorer", "Prépare-toi", "C'est parfait pour"
-   - Sensory words: explosion, fraîcheur, notes, arômes
+   - Sensory words: fraîcheur, notes, arômes, saveurs
    - Avoid formal language like "présente", "arbore", "révèle"
+   - IMPORTANT: VARY your opening phrases! Don't always use the same start.
+
+   Examples of GOOD tone (notice the VARIETY in openings):
+   ✅ "Cette IPA va te faire voyager avec ses notes tropicales! Une explosion de saveurs d'agrumes et de mangue, parfaite pour l'été."
+   ✅ "Tu vas adorer cette Saison légère et rafraîchissante! Des arômes d'épices et de fruits qui dansent sur tes papilles."
+   ✅ "Une blonde qui se boit toute seule! Douce, fruitée et parfaite pour une terrasse entre amis."
+   ✅ "Oublie tout ce que tu connais sur les stouts! Celle-ci combine café torréfié et chocolat noir dans une douceur veloutée."
+   ✅ "Laisse-toi surprendre par cette sour funky! Des notes acidulées de fruits rouges qui réveillent les papilles."
 
 6. description_en - Write a FUN, FRIENDLY English description (2-3 sentences, 50-80 words)
 
    Same vibe as French! Use:
-   - "Get ready", "You're gonna love", "Perfect for"
    - Exclamation points!
    - Sensory, exciting language
+   - IMPORTANT: VARY your opening phrases! Don't always use the same start.
+
+   Examples of GOOD tone (notice the VARIETY in openings):
+   ✅ "This IPA is gonna blow your mind with tropical vibes! Bursting with citrus and mango flavors, perfect for summer sessions."
+   ✅ "You're gonna love this light, refreshing Saison! Spicy notes and fruity aromas dance on your palate."
+   ✅ "A crisp blonde that goes down way too easy! Smooth, fruity, and perfect for patio hangs with friends."
+   ✅ "Forget everything you know about stouts! This one blends roasted coffee and dark chocolate into velvety smoothness."
+   ✅ "Let this funky sour surprise you! Tart red fruit notes that wake up your taste buds in the best way."
 
 CRITICAL RULES:
 - Use ONLY the exact codes provided
