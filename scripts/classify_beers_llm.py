@@ -118,29 +118,13 @@ Descriptions:
 
 5. description_fr - Write a FUN, FRIENDLY French description (2-3 sentences, 50-80 words)
 
-   Make it friendly, funny, and pleasant to read. Use a casual tone like talking to a friend at a bar.
-
-   ABSOLUTE REQUIREMENT FOR VARIETY:
-   - Each description MUST start with a COMPLETELY DIFFERENT first word
-   - FORBIDDEN first words: "Prépare", "Préparez", "Prêt", "Amis", "Ami", "Tu", "Vous"
-   - FORBIDDEN anywhere: References to minors/children ("mineur", "enfant", "jeune")
-   - Vary your opening structure: start with a verb, noun, adjective, exclamation, question, etc.
-   - Imagine describing 4000 different beers - repetition is unacceptable
-
-   Think creatively! Start with unexpected words that match the beer's character.
+   Make it friendly, funny, and pleasant to read. Use a casual tone like talking to a friend.
+   SAFETY RULE: Never reference minors, children, or underage drinking ("mineur", "enfant", "jeune")
 
 6. description_en - Write a FUN, FRIENDLY English description (2-3 sentences, 50-80 words)
 
    Same: make it casual, fun, and enjoyable to read. Don't be too serious. Think beer blog vibes.
-
-   ABSOLUTE REQUIREMENT FOR VARIETY:
-   - Each description MUST start with a COMPLETELY DIFFERENT first word
-   - FORBIDDEN first words: "Get", "Prepare", "Ready", "Friends", "Hey", "You"
-   - FORBIDDEN anywhere: References to minors/children ("minor", "kid", "youth", "child")
-   - Vary your opening structure: start with a verb, noun, adjective, exclamation, question, etc.
-   - Imagine describing 4000 different beers - repetition is unacceptable
-
-   Think creatively! Start with unexpected words that match the beer's character.
+   SAFETY RULE: Never reference minors, children, or underage drinking ("minor", "kid", "youth")
 
 CRITICAL RULES:
 - Use ONLY the exact codes provided
