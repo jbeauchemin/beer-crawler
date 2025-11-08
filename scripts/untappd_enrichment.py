@@ -44,13 +44,31 @@ try:
 
     HAS_SELENIUM = True
 
+
+
+    # Try to import webdriver-manager (easier ChromeDriver setup)
+
+    try:
+
+        from selenium.webdriver.chrome.service import Service
+
+        from webdriver_manager.chrome import ChromeDriverManager
+
+        HAS_WEBDRIVER_MANAGER = True
+
+    except ImportError:
+
+        HAS_WEBDRIVER_MANAGER = False
+
 except ImportError:
 
     HAS_SELENIUM = False
 
+    HAS_WEBDRIVER_MANAGER = False
+
     print("⚠️  Selenium et BeautifulSoup4 sont recommandés pour récupérer description et style.")
 
-    print("   Installez-les avec: pip install selenium beautifulsoup4")
+    print("   Installez-les avec: pip install selenium beautifulsoup4 webdriver-manager")
 
     print("   Le script continuera sans ces données.")
 
@@ -126,15 +144,41 @@ class UntappdEnricher:
 
                 chrome_options.add_argument('--disable-dev-shm-usage')
 
+                chrome_options.add_argument('--disable-gpu')
+
                 chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
 
-                self.driver = webdriver.Chrome(options=chrome_options)
 
-                print("✓ Selenium activé pour récupération complète des données")
+
+                # Use webdriver-manager if available (automatic ChromeDriver management)
+
+                if HAS_WEBDRIVER_MANAGER:
+
+                    service = Service(ChromeDriverManager().install())
+
+                    self.driver = webdriver.Chrome(service=service, options=chrome_options)
+
+                    print("✓ Selenium activé avec webdriver-manager pour récupération complète des données")
+
+                else:
+
+                    # Fallback to system ChromeDriver
+
+                    self.driver = webdriver.Chrome(options=chrome_options)
+
+                    print("✓ Selenium activé pour récupération complète des données")
+
+
 
             except Exception as e:
 
                 print(f"⚠️ Impossible d'initialiser Selenium: {e}")
+
+                print("   SOLUTIONS:")
+
+                print("   1. Installez les dépendances: pip install selenium beautifulsoup4 webdriver-manager")
+
+                print("   2. Ou installez ChromeDriver manuellement pour votre système")
 
                 print("   Le script continuera sans scraping (données limitées)")
 
