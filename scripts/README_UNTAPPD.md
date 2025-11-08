@@ -1,60 +1,214 @@
-# Script d'enrichissement Untappd
+# Scripts d'enrichissement Untappd
 
-Ce script enrichit automatiquement vos données de bières avec les informations provenant d'Untappd via leur API publique Algolia.
+## 🔍 Problème résolu
 
-## 🎯 Objectif
+Le script `parallel_enrichment.py` ne complète pas les données manquantes car:
 
-Ajouter des champs Untappd à chaque bière dans votre fichier JSON:
-- `untappd_id`: ID Untappd de la bière
-- `untappd_url`: URL de la page Untappd
-- `untappd_name`: Nom sur Untappd
-- `untappd_brewery`: Nom de la brasserie sur Untappd
-- `untappd_style`: Style de bière
-- `untappd_abv`: Taux d'alcool
-- `untappd_ibu`: IBU (amertume)
-- `untappd_rating`: Note moyenne
-- `untappd_rating_count`: Nombre de ratings
-- `untappd_description`: Description
-- `untappd_label`: URL de l'étiquette
+1. **Il skip les bières avec `untappd_id`** sans vérifier si description/style sont null
+2. **Selenium ne fonctionne pas bien en parallèle** (10 ChromeDriver = crash/conflits)
 
-## 🚀 Utilisation
+## 📋 Scripts disponibles
 
-### Prérequis
+### 1. `untappd_enrichment.py` - Enrichissement complet (séquentiel)
 
-- Python 3.6+
-- Librairie `requests`: `pip install requests`
-- Fichier `beers_merged.json` dans le dossier `data/` ou `datas/`
-
-### Lancer le script
+Pour les **nouvelles bières sans `untappd_id`**:
 
 ```bash
 cd scripts
 python untappd_enrichment.py
 ```
 
-Le script va:
-1. Charger `beers_merged.json` (de `data/` ou `datas/`)
-2. Créer un backup automatique (`beers_merged_untappd_backup.json`)
-3. Pour chaque bière **sans données Untappd**, rechercher via l'API
-4. **Skip automatiquement** les bières qui ont déjà `untappd_id`
-5. Ajouter les données Untappd si un match exact est trouvé
-6. Sauvegarder le fichier enrichi
+**Que fait-il?**
+- Cherche les bières qui n'ont PAS de `untappd_id`
+- Les trouve via l'API Untappd
+- Scrape leur page pour description et style
+- Ajoute les données dans la structure
 
-**Note**: Les bières qui ont déjà un champ `untappd_id` sont automatiquement ignorées:
-```
-⏭️  Skipped: Nom de la bière (Untappd ID existant: 123456)
-```
+**Temps:** ~2-3h pour 1800 bières (API + scraping)
 
-### Tester la logique de matching
+---
 
-Pour tester que la logique fonctionne correctement:
+### 2. `complete_untappd_missing.py` - Complétion des données manquantes (séquentiel)
+
+**⭐ NOUVEAU - Utilise celui-ci pour compléter les données manquantes!**
+
+Pour les **bières qui ont déjà `untappd_id` mais `untappd_description: null` ou `untappd_style: null`**:
 
 ```bash
 cd scripts
-python test_untappd_matching.py
+python complete_untappd_missing.py
 ```
 
-## 🔍 Logique de matching
+**Que fait-il?**
+- Filtre uniquement les bières avec `untappd_id` mais données manquantes
+- Scrape leur page Untappd pour compléter description et/ou style
+- Fusionne les données dans `descriptions['untappd']` et `styles['untappd']`
+- Normalise les URLs (http → https)
+
+**Temps:** ~12-20 min pour 373 bières (~2 sec/bière)
+
+**Exemple de sortie:**
+```
+🔍 Recherche des bières à compléter...
+   ✓ 373 bières à compléter
+
+📋 Exemples de bières à compléter:
+   1. Disco Soleil - Desc:✗ Style:✗
+   2. Moralité - Desc:✗ Style:✗
+   ...
+
+1/373. 🔄 Disco Soleil
+   URL: https://untappd.com/b/_/374544
+   📄 Description: A session IPA hopped with Citra hops...
+   🎨 Style: IPA - Session
+
+...
+
+📊 STATISTIQUES FINALES
+Bières complétées:         373
+Descriptions ajoutées:     373
+Styles ajoutés:            373
+Taux de succès:            100.0%
+```
+
+---
+
+### 3. `parallel_enrichment.py` - Recherche parallèle (API seulement)
+
+Pour les **nouvelles bières** en mode rapide (sans scraping):
+
+```bash
+cd scripts
+python parallel_enrichment.py untappd 10
+```
+
+**Que fait-il?**
+- Lance 10 workers en parallèle
+- Utilise UNIQUEMENT l'API Untappd (pas de scraping)
+- Très rapide mais données limitées (pas de description/style)
+
+**⚠️ Limitations:**
+- Ne complète PAS les données manquantes
+- Skip toutes les bières avec `untappd_id` existant
+- Pas de scraping (description et style souvent null)
+
+**Temps:** ~5-10 min pour 1800 bières (API seulement)
+
+---
+
+## 🚀 Workflow recommandé
+
+### Pour enrichir un nouveau dataset complet:
+
+```bash
+# 1. Recherche rapide des IDs Untappd (parallèle)
+python parallel_enrichment.py untappd 10
+
+# 2. Complète les données manquantes (scraping séquentiel)
+python complete_untappd_missing.py
+```
+
+### Pour compléter des données existantes avec untappd_id:
+
+```bash
+# Complète juste les données manquantes
+python complete_untappd_missing.py
+```
+
+---
+
+## 🔧 Installation préalable
+
+Avant de lancer ces scripts, installe les dépendances:
+
+```bash
+cd scripts
+
+# Test si Selenium fonctionne
+python test_selenium_setup.py
+
+# Si erreur, installe les dépendances
+pip install -r requirements_scraping.txt
+```
+
+Tu devrais voir:
+```
+✅ Tout est prêt pour le scraping!
+```
+
+---
+
+## 📊 Comparaison des scripts
+
+| Script | Vitesse | Données complètes | Cas d'usage |
+|--------|---------|-------------------|-------------|
+| `parallel_enrichment.py` | ⚡⚡⚡ Très rapide | ❌ Non (API only) | Nouvelles bières, recherche rapide |
+| `untappd_enrichment.py` | ⚡ Lent | ✅ Oui (API + scraping) | Nouvelles bières, données complètes |
+| `complete_untappd_missing.py` | ⚡⚡ Moyen | ✅ Oui (scraping only) | **Compléter données manquantes** |
+
+---
+
+## 🐛 Dépannage
+
+### "Déjà avec Untappd: 2873, Trouvés: 0"
+
+Tu as utilisé `parallel_enrichment.py` qui skip les bières existantes.
+
+**Solution:** Utilise `complete_untappd_missing.py` à la place.
+
+### "Selenium non disponible"
+
+**Solution:**
+```bash
+pip install -r requirements_scraping.txt
+python test_selenium_setup.py
+```
+
+### Le scraping est trop lent
+
+C'est normal! Scraper = 2-3 sec/page.
+
+Pour 373 bières: ~12-20 minutes.
+
+Le script affiche la progression et temps restant.
+
+---
+
+## 📝 Structure des données après enrichissement
+
+Avant:
+```json
+{
+  "name": "Disco Soleil",
+  "untappd_id": 374544,
+  "untappd_url": "https://untappd.com/b/_/374544",
+  "untappd_description": null,
+  "untappd_style": null
+}
+```
+
+Après:
+```json
+{
+  "name": "Disco Soleil",
+  "untappd_id": 374544,
+  "untappd_url": "https://untappd.com/b/_/374544",
+  "untappd_description": "A session IPA hopped with Citra hops...",
+  "untappd_style": "IPA - Session",
+  "descriptions": {
+    "beaudegat": "...",
+    "untappd": "A session IPA hopped with Citra hops..."
+  },
+  "styles": {
+    "beaudegat": "HOUBLONNÉE",
+    "untappd": "IPA - Session"
+  }
+}
+```
+
+---
+
+## 🔍 Logique de matching (pour untappd_enrichment.py)
 
 Le script utilise une **logique de match exact** pour éviter les faux positifs:
 
@@ -97,106 +251,28 @@ Untappd: Fardeau (Different Brewery)
 → Pas de match (producteur ne correspond pas)
 ```
 
-## ⚙️ Configuration
+---
 
-### Délai entre les requêtes
+## ⚡ Performance
 
-Par défaut, le script attend 0.5 secondes entre chaque requête:
+- **parallel_enrichment.py**: 2 requêtes/sec × 10 workers = ~20 bières/sec
+  - Pour 1800 bières: ~5-10 minutes
 
-```python
-enricher = UntappdEnricher(delay=0.5)
-```
+- **untappd_enrichment.py**: 2 requêtes/sec + 2-3 sec scraping = ~0.5 bière/sec
+  - Pour 1800 bières: ~60-90 minutes
 
-### Minimum de ratings
+- **complete_untappd_missing.py**: ~2-3 sec scraping = ~0.5 bière/sec
+  - Pour 373 bières: ~12-20 minutes
 
-Par défaut, le script exige au moins 5 ratings:
+---
 
-```python
-enricher = UntappdEnricher(min_ratings=5)
-```
+## 🛡️ Sécurité
 
-Vous pouvez ajuster ces valeurs selon vos besoins.
+- Le script crée automatiquement un backup avant de modifier les données
+- En cas d'erreur ou d'interruption, les données partielles sont sauvegardées
+- Aucune donnée n'est supprimée, seulement des champs sont ajoutés
 
-### Reprendre après une interruption
-
-Si le script est interrompu (Ctrl+C), il sauvegarde automatiquement les données partielles. Vous pouvez reprendre où vous étiez:
-
-```python
-enriched_beers = enricher.enrich_beers(beers, start_index=100)
-```
-
-## 📊 Statistiques
-
-À la fin de l'exécution, le script affiche des statistiques détaillées:
-
-```
-📊 STATISTIQUES FINALES
-Total de bières:           150
-Déjà avec Untappd:         20
-Données trouvées:          85
-Non trouvées:              45
-Erreurs:                   0
-
-Taux de succès:            65.4%
-```
-
-## 🔧 Stratégie de recherche
-
-Le script génère plusieurs candidats de requête pour maximiser les chances de trouver la bière:
-
-1. `{producer} {name}`
-2. `{name} {producer}`
-3. `{name}` seul
-
-Il teste chaque candidat jusqu'à trouver un match exact.
-
-## 📝 Format des données
-
-### Avant enrichissement
-```json
-{
-  "name": "Fardeau",
-  "producer": "Messorem Bracitorium",
-  "volume": "473ml",
-  "alcohol": "6.2%",
-  ...
-}
-```
-
-### Après enrichissement
-```json
-{
-  "name": "Fardeau",
-  "producer": "Messorem Bracitorium",
-  "volume": "473ml",
-  "alcohol": "6.2%",
-  "untappd_id": "123456",
-  "untappd_url": "https://untappd.com/b/messorem-bracitorium-fardeau/123456",
-  "untappd_name": "Fardeau",
-  "untappd_brewery": "Brasserie Messorem Bracitorium",
-  "untappd_style": "IPA",
-  "untappd_abv": 6.2,
-  "untappd_ibu": 45,
-  "untappd_rating": 3.85,
-  "untappd_rating_count": 250,
-  "untappd_description": "Description de la bière...",
-  "untappd_label": "https://untappd.akamaized.net/...",
-  ...
-}
-```
-
-## 🐛 Debugging
-
-Si une bière n'est pas trouvée, le script affiche des informations de debug:
-
-```
-⚠ 3 résultat(s) trouvé(s) mais aucun match exact
-  1. Fardeau (Brasserie Messorem Bracitorium)
-  2. Fardeau Xtrm Turbo (Brasserie Messorem Bracitorium)
-  3. Fardeau Sour (Autre Brasserie)
-```
-
-Cela vous permet de voir pourquoi certains résultats n'ont pas matché.
+---
 
 ## 📚 API Untappd (Algolia)
 
@@ -219,26 +295,3 @@ Body:
   "hitsPerPage": 12
 }
 ```
-
-## 🛡️ Sécurité
-
-- Le script crée automatiquement un backup avant de modifier les données
-- En cas d'erreur ou d'interruption, les données partielles sont sauvegardées
-- Aucune donnée n'est supprimée, seulement des champs sont ajoutés
-
-## 🤝 Contribution
-
-Pour améliorer la logique de matching:
-1. Modifiez la méthode `is_exact_match()` dans `untappd_enrichment.py`
-2. Ajoutez des tests dans `test_untappd_matching.py`
-3. Exécutez les tests pour valider vos modifications
-
-## ⚡ Performance
-
-- Délai par défaut: 0.5s entre chaque requête (2 requêtes/seconde)
-- Pour 100 bières: ~50 secondes
-- Pour 1000 bières: ~8-10 minutes
-
-## 📄 Licence
-
-Ce script est fourni tel quel pour faciliter l'enrichissement des données de bières avec Untappd.
