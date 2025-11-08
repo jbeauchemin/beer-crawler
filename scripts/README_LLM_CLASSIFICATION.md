@@ -2,6 +2,13 @@
 
 Ce guide explique comment utiliser les scripts de classification automatique des bières avec un modèle LLM local (Mixtral via Ollama).
 
+## 🎉 Améliorations récentes (v2)
+
+- ✨ **Descriptions plus fun et casual**: Le ton est maintenant comme si tu recommandais une bière à un ami au bar!
+- 🎨 **Plus de flavors**: Le système encourage maintenant 2-3 flavors par bière (au lieu de souvent juste 1)
+- 🌡️ **Température augmentée**: Plus de créativité dans les descriptions (0.5 au lieu de 0.3)
+- 📋 **Exemples dans le prompt**: Le LLM reçoit maintenant des exemples concrets du ton voulu
+
 ## 📋 Prérequis
 
 1. **Ollama installé et en marche**

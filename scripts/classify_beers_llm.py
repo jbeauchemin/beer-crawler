@@ -4,11 +4,14 @@ Script to classify beers using local LLM (Ollama with Mixtral).
 
 Generates:
 - style_code: One of 10 predefined beer styles
-- flavors: 1-4 flavor profiles from 10 options
+- flavors: 2-3 flavor profiles from 10 options (min 1, max 4)
 - bitterness_level: LOW/MEDIUM/HIGH based on IBU
 - alcohol_strength: ALCOHOL_FREE/LIGHT/MEDIUM/STRONG based on ABV
-- description_fr: Friendly, casual French description (2-3 sentences)
-- description_en: Friendly, casual English description (2-3 sentences)
+- description_fr: Fun, friendly, casual French description (2-3 sentences)
+- description_en: Fun, friendly, casual English description (2-3 sentences)
+
+Note: Descriptions are written in an exciting, approachable tone - like recommending
+beer to a friend at a bar, not formal beer reviews!
 """
 
 import json
@@ -71,35 +74,41 @@ def build_classification_prompt(beer: Dict) -> str:
     sub_styles = beer.get('sub_styles', {})
     sub_styles_text = ", ".join([f"{source}: {style}" for source, style in sub_styles.items()])
 
-    prompt = f"""You are a beer expert classifier. Analyze this beer and provide a structured classification.
+    prompt = f"""You are a passionate beer sommelier with a fun, casual vibe. Analyze this beer and provide classification + awesome descriptions!
 
-BEER INFORMATION:
+🍺 BEER INFO:
 Name: {name}
 Producer: {producer}
 ABV: {abv}% (alcohol by volume)
 IBU: {ibu if ibu else 'Unknown'}
 
-Styles mentioned in sources:
+Styles mentioned:
 {styles_text if styles_text else 'None'}
 
 Sub-styles:
 {sub_styles_text if sub_styles_text else 'None'}
 
-Descriptions from various sources:
+Descriptions:
 {desc_text if desc_text else 'No description available'}
 
-CLASSIFICATION RULES:
+📋 CLASSIFICATION RULES:
 
-1. style_code - Choose EXACTLY ONE from this list:
+1. style_code - Choose EXACTLY ONE:
 {chr(10).join([f'   - {code}' for code in STYLE_CODES])}
 
-2. flavors - Choose 1 to 4 flavors that best represent this beer:
+2. flavors - Choose 2-3 flavors that BEST represent this beer (minimum 2, maximum 4):
 {chr(10).join([f'   - {code}' for code in FLAVOR_CODES])}
 
-3. bitterness_level - Based on IBU (or infer from descriptions):
-   - LOW: 0-20 IBU
-   - MEDIUM: 20-40 IBU
-   - HIGH: 40+ IBU
+   IMPORTANT: Most beers have AT LEAST 2 distinct flavor profiles. Be generous but accurate!
+   Examples:
+   - Witbier: SPICY_HERBAL (coriander) + CITRUS_TROPICAL (orange peel)
+   - IPA: HOPPY_BITTER + CITRUS_TROPICAL
+   - Stout: CHOCOLATE_COFFEE + MALTY_GRAINY + CARAMEL_TOFFEE_SWEET
+
+3. bitterness_level - Based on IBU or style:
+   - LOW: 0-20 IBU (Wheat, Blonde, Sour, most Lagers)
+   - MEDIUM: 20-40 IBU (Pale Ale, Amber, some IPAs)
+   - HIGH: 40+ IBU (IPA, Double IPA)
 
 4. alcohol_strength - Based on ABV:
    - ALCOHOL_FREE: 0-0.5%
@@ -107,22 +116,43 @@ CLASSIFICATION RULES:
    - MEDIUM: 5-7%
    - STRONG: 7-15%
 
-5. description_fr - Write a friendly, casual French description (2-3 sentences, 50-80 words).
-   Make it pleasant to read, like talking to a friend. Focus on taste, aroma, and drinking experience.
+5. description_fr - Write a FUN, FRIENDLY French description (2-3 sentences, 50-80 words)
 
-6. description_en - Write a friendly, casual English description (2-3 sentences, 50-80 words).
-   Same style as French: friendly, approachable, focusing on the beer experience.
+   TONE: Like recommending beer to a friend at a bar! Use:
+   - Exclamation points!
+   - "Tu vas adorer", "Prépare-toi", "C'est parfait pour"
+   - Sensory words: explosion, fraîcheur, notes, arômes
+   - Avoid formal language like "présente", "arbore", "révèle"
 
-IMPORTANT:
-- Use ONLY the exact codes provided above
-- For flavors, provide an array of 1-4 codes
-- Descriptions should be engaging and fun, not technical
-- Base your classification on ALL available information
+   Examples of GOOD tone:
+   ✅ "Prépare-toi à une explosion d'agrumes! Cette IPA va réveiller tes papilles avec ses notes tropicales et son amertume bien balancée."
+   ✅ "Une blonde légère et rafraîchissante qui se boit toute seule! Parfaite pour une terrasse ensoleillée entre amis."
 
-Respond with ONLY a valid JSON object in this exact format:
+   Examples of BAD tone:
+   ❌ "Cette bière présente des arômes d'agrumes et révèle une amertume équilibrée."
+   ❌ "Elle arbore une robe dorée et offre un profil gustatif complexe."
+
+6. description_en - Write a FUN, FRIENDLY English description (2-3 sentences, 50-80 words)
+
+   Same vibe as French! Use:
+   - "Get ready", "You're gonna love", "Perfect for"
+   - Exclamation points!
+   - Sensory, exciting language
+
+   Examples of GOOD tone:
+   ✅ "Get ready for a citrus bomb! This IPA packs a punch with tropical notes and a well-balanced bitterness that'll keep you coming back."
+   ✅ "A light, crisp blonde that goes down way too easy! Perfect for those sunny patio hangs with friends."
+
+CRITICAL RULES:
+- Use ONLY the exact codes provided
+- MUST have 2-3 flavors (rarely 1, occasionally 4)
+- Descriptions MUST be fun, casual, exciting - NO formal beer-review language!
+- Write like you're talking to a friend, not writing a wine review!
+
+Respond with ONLY valid JSON:
 {{
   "style_code": "...",
-  "flavors": ["...", "..."],
+  "flavors": ["...", "...", "..."],
   "bitterness_level": "...",
   "alcohol_strength": "...",
   "description_fr": "...",
@@ -132,7 +162,7 @@ Respond with ONLY a valid JSON object in this exact format:
     return prompt
 
 
-def call_ollama(prompt: str, model: str = "mixtral:latest", temperature: float = 0.3) -> Optional[Dict]:
+def call_ollama(prompt: str, model: str = "mixtral:latest", temperature: float = 0.5) -> Optional[Dict]:
     """Call Ollama API to get classification."""
 
     try:
@@ -192,6 +222,10 @@ def validate_classification(classification: Dict) -> bool:
     if not isinstance(flavors, list) or len(flavors) < 1 or len(flavors) > 4:
         print(f"❌ Invalid flavors count: {len(flavors)}")
         return False
+
+    # Warn if only 1 flavor (should be rare)
+    if len(flavors) == 1:
+        print(f"⚠️  Warning: Only 1 flavor for {classification.get('style_code', 'unknown')} beer - consider if more apply")
 
     if not all(f in FLAVOR_CODES for f in flavors):
         invalid = [f for f in flavors if f not in FLAVOR_CODES]
