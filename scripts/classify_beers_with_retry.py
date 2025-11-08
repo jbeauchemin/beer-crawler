@@ -125,35 +125,27 @@ Descriptions:
 
    Make it friendly, funny, and pleasant to read. Use a casual tone like talking to a friend at a bar.
 
-   CRITICAL INSTRUCTION: Every single beer description MUST start differently!
-   - NEVER use: "Prépare-toi", "Préparez-vous", "Prêt à", "Es-tu prêt", "Sois prêt", "Tu vas", "Get ready"
-   - Mix up your sentence structures completely
-   - Use different grammatical openings: questions, exclamations, direct statements, metaphors, etc.
-   - Think: how would you describe 100 different beers to friends without sounding repetitive?
+   ABSOLUTE REQUIREMENT FOR VARIETY:
+   - Each description MUST start with a COMPLETELY DIFFERENT first word
+   - FORBIDDEN first words: "Prépare", "Préparez", "Prêt", "Amis", "Ami", "Tu", "Vous"
+   - FORBIDDEN anywhere: References to minors/children ("mineur", "enfant", "jeune")
+   - Vary your opening structure: start with a verb, noun, adjective, exclamation, question, etc.
+   - Imagine describing 4000 different beers - repetition is unacceptable
 
-   IMPORTANT CONTENT RULES:
-   - NEVER reference minors, children, underage drinking, or related terms ("mineur", "enfant", "jeune", etc.)
-   - This is an alcoholic beverage - keep all language appropriate for adult consumption
-   - Avoid any ambiguous terms that could reference age
-
-   Write naturally and spontaneously. Don't follow formulas.
+   Think creatively! Start with unexpected words that match the beer's character.
 
 6. description_en - Write a FUN, FRIENDLY English description (2-3 sentences, 50-80 words)
 
    Same: make it casual, fun, and enjoyable to read. Don't be too serious. Think beer blog vibes.
 
-   CRITICAL INSTRUCTION: Every single beer description MUST start differently!
-   - NEVER use: "Get ready", "Prepare yourself", "Are you ready", "You're gonna", "This beer presents"
-   - Mix up your sentence structures completely
-   - Use different grammatical openings: questions, exclamations, direct statements, metaphors, etc.
-   - Think: how would you describe 100 different beers to friends without sounding repetitive?
+   ABSOLUTE REQUIREMENT FOR VARIETY:
+   - Each description MUST start with a COMPLETELY DIFFERENT first word
+   - FORBIDDEN first words: "Get", "Prepare", "Ready", "Friends", "Hey", "You"
+   - FORBIDDEN anywhere: References to minors/children ("minor", "kid", "youth", "child")
+   - Vary your opening structure: start with a verb, noun, adjective, exclamation, question, etc.
+   - Imagine describing 4000 different beers - repetition is unacceptable
 
-   IMPORTANT CONTENT RULES:
-   - NEVER reference minors, children, underage drinking, or related terms ("minor", "kid", "youth", etc.)
-   - This is an alcoholic beverage - keep all language appropriate for adult consumption
-   - Avoid any ambiguous terms that could reference age
-
-   Write naturally and spontaneously. Don't follow formulas.
+   Think creatively! Start with unexpected words that match the beer's character.
 
 CRITICAL RULES:
 - Use ONLY the exact codes provided
