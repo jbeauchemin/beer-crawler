@@ -127,32 +127,45 @@ Descriptions:
 
 5. description_fr - Write a FUN, FRIENDLY French description (2-3 sentences, 50-80 words)
 
-   TONE: Like recommending beer to a friend at a bar! Use:
-   - Exclamation points!
-   - Sensory words: fraîcheur, notes, arômes, saveurs
-   - Avoid formal language like "présente", "arbore", "révèle"
-   - IMPORTANT: VARY your opening phrases! Don't always use the same start.
+   Make it friendly, funny, and pleasant to read. Use a casual tone like talking to a friend at a bar.
 
-   Examples of GOOD tone (notice the VARIETY in openings):
-   ✅ "Cette IPA va te faire voyager avec ses notes tropicales! Une explosion de saveurs d'agrumes et de mangue, parfaite pour l'été."
-   ✅ "Tu vas adorer cette Saison légère et rafraîchissante! Des arômes d'épices et de fruits qui dansent sur tes papilles."
-   ✅ "Une blonde qui se boit toute seule! Douce, fruitée et parfaite pour une terrasse entre amis."
-   ✅ "Oublie tout ce que tu connais sur les stouts! Celle-ci combine café torréfié et chocolat noir dans une douceur veloutée."
-   ✅ "Laisse-toi surprendre par cette sour funky! Des notes acidulées de fruits rouges qui réveillent les papilles."
+   CRITICAL: DO NOT start every description the same way! Mix it up completely!
+
+   ✅ GOOD examples (all DIFFERENT openings):
+   - "Wow, quelle belle surprise! Des arômes de mangue et passion qui explosent en bouche."
+   - "Cette IPA houblonnée à mort va réveiller tes papilles! Agrumes, pin, et une belle amertume."
+   - "Imagine une blonde ultra rafraîchissante. C'est exactement ça, avec des notes de miel."
+   - "Si t'aimes le chocolat noir, tu vas tripper sur ce stout crémeux!"
+   - "Attention, ça se boit dangereusement bien! Légère, fruitée, parfaite pour l'été."
+   - "Les amateurs de houblon, c'est pour vous. Tropical, juteux, et terriblement efficace."
+   - "Un classique revisité avec brio! Notes d'épices et une finale sèche."
+   - "Ça goûte l'été dans un verre. Agrumes, coriandre, et une fraîcheur incroyable."
+
+   ❌ BAD - DO NOT use formal language or repeat the same opening:
+   - "Prépare-toi à..." (used too often!)
+   - "Cette bière présente..." (too formal!)
+   - "Elle arbore..." (too formal!)
 
 6. description_en - Write a FUN, FRIENDLY English description (2-3 sentences, 50-80 words)
 
-   Same vibe as French! Use:
-   - Exclamation points!
-   - Sensory, exciting language
-   - IMPORTANT: VARY your opening phrases! Don't always use the same start.
+   Same: make it casual, fun, and enjoyable to read. Don't be too serious. Think beer blog vibes.
 
-   Examples of GOOD tone (notice the VARIETY in openings):
-   ✅ "This IPA is gonna blow your mind with tropical vibes! Bursting with citrus and mango flavors, perfect for summer sessions."
-   ✅ "You're gonna love this light, refreshing Saison! Spicy notes and fruity aromas dance on your palate."
-   ✅ "A crisp blonde that goes down way too easy! Smooth, fruity, and perfect for patio hangs with friends."
-   ✅ "Forget everything you know about stouts! This one blends roasted coffee and dark chocolate into velvety smoothness."
-   ✅ "Let this funky sour surprise you! Tart red fruit notes that wake up your taste buds in the best way."
+   CRITICAL: DO NOT start every description the same way! Mix it up completely!
+
+   ✅ GOOD examples (all DIFFERENT openings):
+   - "Holy mango vibes! Tropical fruit bomb with passion fruit and citrus notes."
+   - "Hop heads, this one's calling your name. Piney, citrusy, with a solid bitter kick."
+   - "Smooth as silk and dangerously drinkable! Light blonde with hints of honey."
+   - "If chocolate and coffee had a baby, this would be it. Rich, creamy stout perfection."
+   - "Warning: goes down way too easy! Fruity, refreshing, and perfect for patios."
+   - "Tropical juice meets craft beer. Juicy, hazy, and incredibly sessionable."
+   - "A Belgian classic done right! Spicy notes with a crisp, dry finish."
+   - "Summer in a glass. Coriander, orange peel, and pure refreshment."
+
+   ❌ BAD - DO NOT repeat the same opening:
+   - "Get ready for..." (used too often!)
+   - "Prepare yourself..." (too repetitive!)
+   - "This beer presents..." (too formal!)
 
 CRITICAL RULES:
 - Use ONLY the exact codes provided
