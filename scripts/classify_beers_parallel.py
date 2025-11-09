@@ -71,24 +71,27 @@ def extract_abv(beer: Dict) -> Optional[float]:
     """Extract ABV from beer data, trying multiple sources."""
     import re
 
-    # Try abv_normalized first (preferred)
-    if beer.get('abv_normalized'):
-        return float(beer['abv_normalized'])
+    # If this is a Prisma-formatted beer, get the original from rawData
+    original_beer = beer.get('rawData', beer)
 
-    # Try direct 'abv' field
+    # Try abv_normalized first (preferred)
+    if original_beer.get('abv_normalized'):
+        return float(original_beer['abv_normalized'])
+
+    # Try direct 'abv' field (could be string from Prisma format)
     if beer.get('abv'):
         abv_val = beer['abv']
         if isinstance(abv_val, (int, float)):
             return float(abv_val)
         # If it's a string, try to parse it
-        if isinstance(abv_val, str):
+        if isinstance(abv_val, str) and abv_val != 'null':
             match = re.search(r'(\d+\.?\d*)\s*%?', abv_val)
             if match:
                 return float(match.group(1))
 
-    # Try 'alcohol' field in rawData (fallback)
-    if 'alcohol' in beer:
-        alcohol = beer['alcohol']
+    # Try 'alcohol' field
+    if 'alcohol' in original_beer:
+        alcohol = original_beer['alcohol']
         if isinstance(alcohol, str):
             match = re.search(r'(\d+\.?\d*)\s*%', alcohol)
             if match:
@@ -149,11 +152,13 @@ Descriptions:
    - MEDIUM: 20-40 IBU (Pale Ale, Amber, some IPAs)
    - HIGH: 40+ IBU (IPA, Double IPA)
 
-4. alcohol_strength - Based on ABV:
+4. alcohol_strength - Based on ABV (FOLLOW THESE RULES EXACTLY):
    - ALCOHOL_FREE: 0-0.5%
-   - LIGHT: 0.5% to under 5%
-   - MEDIUM: 5-7% (inclusive)
-   - STRONG: over 7%
+   - LIGHT: 0.5% to 4.9% (examples: 3.5%, 4.2%, 4.8%)
+   - MEDIUM: 5.0% to 7.0% (examples: 5.0%, 5.3%, 5.5%, 6.2%, 6.5%, 7.0%)
+   - STRONG: over 7.0% (examples: 7.5%, 8.0%, 10.0%)
+
+   IMPORTANT: 5.0% and above = MEDIUM or STRONG, NOT LIGHT!
 
 5. description_fr - Write a FUN, FRIENDLY French description (2-3 sentences, 50-80 words)
 
