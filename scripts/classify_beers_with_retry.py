@@ -150,11 +150,11 @@ Descriptions:
 
 4. alcohol_strength - Based on ABV (FOLLOW THESE RULES EXACTLY):
    - ALCOHOL_FREE: 0-0.5%
-   - LIGHT: 0.5% to 4.9% (examples: 3.5%, 4.2%, 4.8%)
-   - MEDIUM: 5.0% to 7.0% (examples: 5.0%, 5.3%, 5.5%, 6.2%, 6.5%, 7.0%)
+   - LIGHT: 0.5% to 4.5% (examples: 3.0%, 3.5%, 4.0%, 4.2%)
+   - MEDIUM: 4.5% to 7.0% (examples: 4.8%, 5.0%, 5.5%, 6.2%, 6.5%, 7.0%)
    - STRONG: over 7.0% (examples: 7.5%, 8.0%, 10.0%)
 
-   IMPORTANT: 5.0% and above = MEDIUM or STRONG, NOT LIGHT!
+   IMPORTANT: 4.5% and above = MEDIUM or STRONG, NOT LIGHT!
 
 5. description_fr - Write a FUN, FRIENDLY French description (2-3 sentences, 50-80 words)
 
@@ -272,14 +272,21 @@ def format_for_prisma(beer: Dict, classification: Optional[Dict]) -> Dict:
     # Extract ABV from multiple sources
     abv_value = extract_abv(beer)
 
+    # Get rating info
+    num_ratings = beer.get('untappd_rating_count', 0)
+    rating = beer.get('untappd_rating', 0)
+
+    # Only include rating if there are actual ratings (numRatings > 0)
+    rating_str = str(rating) if num_ratings > 0 else None
+
     # Base beer data
     prisma_beer = {
         "codeBar": beer.get('upc') or None,  # Can be null
         "productName": beer.get('name'),
         "abv": str(abv_value) if abv_value else None,
         "ibu": str(beer.get('ibu_normalized')) if beer.get('ibu_normalized') else None,
-        "rating": str(beer.get('untappd_rating', 0)),
-        "numRatings": beer.get('untappd_rating_count', 0),
+        "rating": rating_str,
+        "numRatings": num_ratings,
         "imageUrl": get_first_image(beer.get('photo_urls', {})),
         "producer": {
             "name": beer.get('producer')
