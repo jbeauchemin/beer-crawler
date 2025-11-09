@@ -40,24 +40,29 @@ class BeaudegatDescriptionFetcher:
 
             soup = BeautifulSoup(self.driver.page_source, 'html.parser')
 
-            # Find the product description div
-            desc_div = soup.find('div', class_='product__description')
+            # Find the product description div (note: class is 'product__description rte')
+            desc_div = soup.find('div', class_='product__description rte')
             if not desc_div:
                 return None
 
             # Extract all paragraphs
             paragraphs = desc_div.find_all('p')
 
-            # Remove the <p> tags from the HTML to get the raw text after them
-            for p in paragraphs:
-                p.decompose()  # Remove all <p> elements
+            if not paragraphs or len(paragraphs) < 3:
+                return None
 
-            # Get the remaining text (the actual description)
-            description = desc_div.get_text(separator=' ', strip=True)
+            # Structure of paragraphs:
+            # paragraphs[0]: Producer - Alcohol% - Volume ml (metadata)
+            # paragraphs[1]: Style like "HOUBLONNÉE"
+            # paragraphs[2:]: Actual beer description
 
-            # Clean up whitespace
-            description = ' '.join(description.split())
+            description_parts = []
+            for p in paragraphs[2:]:
+                text = p.get_text(strip=True)
+                if text:
+                    description_parts.append(text)
 
+            description = ' '.join(description_parts)
             return description.strip() if description else None
 
         except Exception as e:
