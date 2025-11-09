@@ -5,18 +5,28 @@ Parallel beer classification with retry logic and Prisma-ready output.
 Features:
 - Parallel processing with configurable workers (2-3 recommended)
 - Retry failed classifications up to 3 times
-- Progress tracking (resume from where you left off)
+- Progress tracking (resume from where you left off with --resume)
+- Saves after EVERY beer (can interrupt with Ctrl+C safely)
 - Thread-safe incremental saving
 - Formats data for Prisma Beer schema
 - Same quality as sequential version
+- Graceful shutdown on Ctrl+C
 
 Recommended: Use 2 workers on M2 32GB for 2x speed improvement
+
+Usage:
+    # First run
+    python classify_beers_parallel.py input.json output.json --workers 2
+
+    # Resume after interruption (Ctrl+C or crash)
+    python classify_beers_parallel.py input.json output.json --workers 2 --resume
 """
 
 import json
 import sys
 import time
 import threading
+import signal
 from pathlib import Path
 from typing import Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -376,6 +386,27 @@ def process_beer(args):
     }
 
 
+# Global variables for signal handler
+_output_file = None
+_progress = None
+
+def signal_handler(sig, frame):
+    """Handle Ctrl+C gracefully by saving progress before exiting."""
+    print("\n\n⚠️  Interrupted by user (Ctrl+C)")
+    if _output_file and _progress:
+        print("💾 Saving progress before exiting...")
+        try:
+            with open(_output_file, 'w', encoding='utf-8') as f:
+                json.dump(_progress.get_all_beers(), f, ensure_ascii=False, indent=2)
+            stats = _progress.get_stats()
+            print(f"✅ Saved {stats['classified']} classified beers to {_output_file}")
+            print(f"💡 Use --resume to continue from where you left off")
+        except Exception as e:
+            print(f"❌ Error saving progress: {e}")
+    print("👋 Exiting...")
+    sys.exit(0)
+
+
 def main():
     if len(sys.argv) < 3:
         print("Usage: python classify_beers_parallel.py <input.json> <output.json> [OPTIONS]")
@@ -392,6 +423,9 @@ def main():
     input_file = Path(sys.argv[1])
     output_file = Path(sys.argv[2])
     progress_file = output_file.parent / f"{output_file.stem}.progress"
+
+    # Install signal handler for Ctrl+C
+    signal.signal(signal.SIGINT, signal_handler)
 
     # Parse arguments
     model = "mixtral:latest"
@@ -425,11 +459,31 @@ def main():
     with open(input_file, 'r', encoding='utf-8') as f:
         beers = json.load(f)
 
+    # Load already processed beers if resuming
+    already_processed = set()
+    if resume and output_file.exists():
+        print(f"🔄 Resume mode: Loading already processed beers...")
+        with open(output_file, 'r', encoding='utf-8') as f:
+            existing_beers = json.load(f)
+            # Track which beers are already done by their name+producer combo
+            for beer in existing_beers:
+                raw_data = beer.get('rawData', {})
+                beer_key = f"{raw_data.get('name', '')}|{raw_data.get('producer', '')}"
+                already_processed.add(beer_key)
+        print(f"✅ Found {len(already_processed)} already processed beers")
+
+    # Filter out already processed beers
+    if already_processed:
+        original_count = len(beers)
+        beers = [b for b in beers if f"{b.get('name', '')}|{b.get('producer', '')}" not in already_processed]
+        skipped = original_count - len(beers)
+        print(f"⏭️  Skipping {skipped} already processed beers")
+
     if limit:
         beers = beers[:limit]
         print(f"⚠️  Testing mode: Processing only {limit} beers")
 
-    print(f"✅ Loaded {len(beers)} beers")
+    print(f"✅ Loaded {len(beers)} beers to process")
     print()
 
     # Check Ollama
@@ -445,9 +499,23 @@ def main():
     # Thread-safe progress
     progress = ThreadSafeProgress()
 
+    # Set global variables for signal handler
+    global _output_file, _progress
+    _output_file = output_file
+    _progress = progress
+
+    # Load existing beers into progress if resuming
+    if resume and output_file.exists():
+        with open(output_file, 'r', encoding='utf-8') as f:
+            existing_beers = json.load(f)
+            for beer in existing_beers:
+                progress.add_classified(beer)
+
     # Process beers in parallel
     print(f"🚀 Starting parallel classification with {workers} workers...")
     print(f"💡 Tip: Each worker processes beers independently for {workers}x speed")
+    print(f"💾 Auto-save: Progress saved after EVERY beer")
+    print(f"⚠️  Safe to interrupt: Press Ctrl+C anytime, use --resume to continue")
     print()
 
     # Prepare work items
@@ -476,11 +544,9 @@ def main():
 
                 pbar.update(1)
 
-                # Save every 10 beers
-                stats = progress.get_stats()
-                if stats['processed'] % 10 == 0:
-                    with open(output_file, 'w', encoding='utf-8') as f:
-                        json.dump(progress.get_all_beers(), f, ensure_ascii=False, indent=2)
+                # Save after EVERY beer (critical for resume capability)
+                with open(output_file, 'w', encoding='utf-8') as f:
+                    json.dump(progress.get_all_beers(), f, ensure_ascii=False, indent=2)
 
     # Final save
     print()
