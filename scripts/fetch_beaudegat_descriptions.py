@@ -65,16 +65,20 @@ class BeaudegatDescriptionFetcher:
             # Collect all text parts, skipping metadata and style tags
             description_parts = []
 
-            # Process paragraphs (skip first one if it's metadata, and style-only paragraphs)
+            # Process paragraphs (skip metadata and style-only paragraphs)
             for i, p in enumerate(paragraphs):
                 text = p.get_text(strip=True)
 
-                # Skip metadata (first paragraph with % and ml)
-                if i == 0 and re.search(r'\d+\.?\d*\s*%.*\d+\s*ml', text, re.IGNORECASE):
+                # Skip metadata paragraphs (contain both % and ml - any order)
+                if re.search(r'\d+\.?\d*\s*%', text, re.IGNORECASE) and re.search(r'\d+\s*ml', text, re.IGNORECASE):
+                    if self.debug:
+                        print(f"  🔍 DEBUG: Skipping metadata paragraph: {text[:80]}")
                     continue
 
                 # Skip style-only paragraphs (HOUBLONNÉE, BLONDE, etc.)
-                if re.match(r'^(NOIRE|BLONDE|ROUSSE|BLANCHE|HOUBLONNÉE|SOIF|SÛRE|COMPLEXE)$', text, re.IGNORECASE):
+                if re.match(r'^.*?(NOIRE|BLONDE|ROUSSE|BLANCHE|HOUBLONNÉE|SOIF|SÛRE|COMPLEXE)\s*$', text, re.IGNORECASE):
+                    if self.debug:
+                        print(f"  🔍 DEBUG: Skipping style paragraph: {text[:80]}")
                     continue
 
                 # Skip very short text
@@ -84,6 +88,13 @@ class BeaudegatDescriptionFetcher:
             # Process content divs (these often contain the actual description)
             for div in content_divs:
                 text = div.get_text(strip=True)
+
+                # Skip divs with metadata (contain both % and ml)
+                if re.search(r'\d+\.?\d*\s*%', text, re.IGNORECASE) and re.search(r'\d+\s*ml', text, re.IGNORECASE):
+                    if self.debug:
+                        print(f"  🔍 DEBUG: Skipping metadata div: {text[:80]}")
+                    continue
+
                 if text and len(text) > 20:
                     description_parts.append(text)
 
