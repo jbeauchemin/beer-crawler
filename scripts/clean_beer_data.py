@@ -23,8 +23,11 @@ try:
     import requests
     from bs4 import BeautifulSoup
     SCRAPING_AVAILABLE = True
+    # Create a session to maintain cookies
+    SESSION = requests.Session()
 except ImportError:
     SCRAPING_AVAILABLE = False
+    SESSION = None
     print("⚠️  Warning: requests or beautifulsoup4 not installed. Skipping description fetching.")
     print("   Install with: pip install requests beautifulsoup4")
 
@@ -33,14 +36,24 @@ print_lock = Lock()
 
 # Global delay between requests (can be overridden via CLI)
 REQUEST_DELAY = 2.0
+SKIP_FETCH = False
 
 def fetch_beaudegat_description(url: str, max_retries: int = 3) -> Optional[str]:
     """Fetch beer description from beaudegat website with retry logic."""
-    if not SCRAPING_AVAILABLE:
+    if not SCRAPING_AVAILABLE or SKIP_FETCH:
         return None
 
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'fr-CA,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Cache-Control': 'max-age=0'
     }
 
     for attempt in range(max_retries):
@@ -48,7 +61,7 @@ def fetch_beaudegat_description(url: str, max_retries: int = 3) -> Optional[str]
             # Add delay to be polite to the server
             time.sleep(REQUEST_DELAY)
 
-            response = requests.get(url, headers=headers, timeout=10)
+            response = SESSION.get(url, headers=headers, timeout=10)
 
             # Handle rate limiting with exponential backoff
             if response.status_code == 429:
@@ -199,11 +212,14 @@ Examples:
   # Sequential processing (default)
   python clean_beer_data.py input.json output.json
 
+  # Skip web fetching (recommended if site blocks automated requests)
+  python clean_beer_data.py input.json output.json --skip-fetch
+
   # Parallel processing with 5 workers
-  python clean_beer_data.py input.json output.json --workers 5
+  python clean_beer_data.py input.json output.json --workers 5 --skip-fetch
 
   # Parallel processing with 10 workers (faster for large datasets)
-  python clean_beer_data.py input.json output.json -w 10
+  python clean_beer_data.py input.json output.json -w 10 --skip-fetch
         '''
     )
     parser.add_argument('input_file', type=Path, help='Input JSON file')
@@ -212,19 +228,24 @@ Examples:
                         help='Number of parallel workers (default: 1 = sequential)')
     parser.add_argument('--delay', type=float, default=2.0,
                         help='Delay between web requests in seconds (default: 2.0)')
+    parser.add_argument('--skip-fetch', action='store_true',
+                        help='Skip fetching missing descriptions from web (faster, but some beers may lack descriptions)')
 
     args = parser.parse_args()
 
-    # Set global delay
-    global REQUEST_DELAY
+    # Set global flags
+    global REQUEST_DELAY, SKIP_FETCH
     REQUEST_DELAY = args.delay
+    SKIP_FETCH = args.skip_fetch
 
     if not args.input_file.exists():
         print(f"❌ Error: Input file '{args.input_file}' not found")
         sys.exit(1)
 
     print(f"📖 Loading beers from {args.input_file}...")
-    if args.delay != 2.0:
+    if args.skip_fetch:
+        print(f"⚠️  Web fetching disabled (--skip-fetch)")
+    elif args.delay != 2.0:
         print(f"⏱️  Request delay: {args.delay}s")
     with open(args.input_file, 'r', encoding='utf-8') as f:
         beers = json.load(f)
