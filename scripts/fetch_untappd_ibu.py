@@ -18,6 +18,18 @@ except ImportError:
     print("   Installez-la avec: pip install requests")
     sys.exit(1)
 
+# Try to import Selenium (for scraping IBU from page)
+try:
+    from selenium import webdriver
+    from selenium.webdriver.chrome.options import Options
+    from bs4 import BeautifulSoup
+    HAS_SELENIUM = True
+except ImportError:
+    HAS_SELENIUM = False
+    print("⚠️  Selenium et BeautifulSoup4 sont recommandés pour récupérer les IBU depuis les pages.")
+    print("   Installez-les avec: pip install selenium beautifulsoup4")
+    print("   Le script continuera avec l'API seulement (données limitées).\n")
+
 
 class UntappdIBUFetcher:
     """Récupère les IBU depuis Untappd"""
@@ -32,18 +44,39 @@ class UntappdIBUFetcher:
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
     }
 
-    def __init__(self, delay: float = 0.5, min_ratings: int = 5):
+    def __init__(self, delay: float = 0.5, min_ratings: int = 5, use_selenium: bool = True):
         """
         Args:
             delay: Délai en secondes entre chaque requête API
             min_ratings: Nombre minimum de ratings pour considérer un résultat valide
+            use_selenium: Si True, utilise Selenium pour scraper l'IBU depuis la page
         """
         self.delay = delay
         self.min_ratings = min_ratings
+        self.use_selenium = use_selenium and HAS_SELENIUM
+        self.driver = None
+
+        # Initialise le driver Selenium si disponible
+        if self.use_selenium:
+            try:
+                chrome_options = Options()
+                chrome_options.add_argument('--headless')
+                chrome_options.add_argument('--no-sandbox')
+                chrome_options.add_argument('--disable-dev-shm-usage')
+                chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+                self.driver = webdriver.Chrome(options=chrome_options)
+                print("✓ Selenium activé pour scraping des IBU depuis les pages web")
+            except Exception as e:
+                print(f"⚠️ Impossible d'initialiser Selenium: {e}")
+                print("   Le script continuera avec l'API seulement (données limitées)\n")
+                self.use_selenium = False
+                self.driver = None
+
         self.stats = {
             'total': 0,
             'skipped': 0,
             'found': 0,
+            'scraped': 0,
             'not_found': 0,
             'errors': 0
         }
@@ -136,6 +169,43 @@ class UntappdIBUFetcher:
 
         return True
 
+    def scrape_ibu_from_page(self, url: str) -> Optional[int]:
+        """
+        Scrape l'IBU depuis la page Untappd
+
+        Args:
+            url: URL de la page Untappd
+
+        Returns:
+            La valeur IBU si trouvée, None sinon
+        """
+        if not self.driver or not url:
+            return None
+
+        try:
+            self.driver.get(url)
+            time.sleep(2)  # Attendre le chargement du JavaScript
+
+            soup = BeautifulSoup(self.driver.page_source, 'html.parser')
+
+            # Cherche l'IBU dans la page
+            # Format : <p class="ibu">5 IBU</p>
+            ibu_elem = soup.find('p', {'class': 'ibu'})
+            if ibu_elem:
+                ibu_text = ibu_elem.get_text(strip=True)
+                # Extrait le nombre depuis "5 IBU" ou "25 IBU"
+                match = re.search(r'(\d+)\s*IBU', ibu_text)
+                if match:
+                    ibu = int(match.group(1))
+                    print(f"    🔍 IBU scrapé depuis la page: {ibu}")
+                    return ibu
+
+            return None
+
+        except Exception as e:
+            print(f"    ⚠️ Erreur lors du scraping de {url}: {e}")
+            return None
+
     def search_untappd_ibu(self, beer: Dict) -> Optional[int]:
         """
         Recherche l'IBU sur Untappd pour une bière
@@ -195,12 +265,38 @@ class UntappdIBUFetcher:
                 for hit in valid_hits:
                     if self.is_exact_match(beer, hit):
                         ibu = hit.get('beer_ibu')
+
+                        # Si l'IBU est présent dans l'API, le retourner
                         if ibu is not None:
-                            print(f"  ✓ IBU trouvé: {ibu} - {hit.get('beer_name')} ({hit.get('brewery_name')})")
+                            print(f"  ✓ IBU trouvé (API): {ibu} - {hit.get('beer_name')} ({hit.get('brewery_name')})")
                             return ibu
+
+                        # Si l'IBU est absent de l'API mais qu'on a Selenium, scraper la page
+                        if self.use_selenium:
+                            # Construit l'URL Untappd
+                            bid = hit.get('bid')
+                            beer_slug = hit.get('beer_slug', '')
+                            brewery_slug = hit.get('brewery_slug', '')
+
+                            if bid:
+                                if brewery_slug and beer_slug:
+                                    url = f"https://untappd.com/b/{brewery_slug}-{beer_slug}/{bid}"
+                                elif beer_slug:
+                                    url = f"https://untappd.com/b/{beer_slug}/{bid}"
+                                else:
+                                    url = f"https://untappd.com/b/_/{bid}"
+
+                                print(f"  ⚠ Match trouvé mais pas d'IBU dans l'API: {hit.get('beer_name')}")
+                                print(f"  🔍 Scraping de la page: {url}")
+
+                                ibu = self.scrape_ibu_from_page(url)
+                                if ibu is not None:
+                                    self.stats['scraped'] += 1
+                                    return ibu
                         else:
-                            print(f"  ⚠ Match trouvé mais pas d'IBU: {hit.get('beer_name')}")
-                            return None
+                            print(f"  ⚠ Match trouvé mais pas d'IBU: {hit.get('beer_name')} (scraping désactivé)")
+
+                        return None
 
             except requests.exceptions.RequestException as e:
                 print(f"  ✗ Erreur API: {e}")
@@ -261,6 +357,19 @@ class UntappdIBUFetcher:
 
         return beers
 
+    def cleanup(self):
+        """Ferme le driver Selenium proprement"""
+        if self.driver:
+            try:
+                self.driver.quit()
+                print("\n✓ Driver Selenium fermé")
+            except Exception as e:
+                print(f"\n⚠️ Erreur lors de la fermeture du driver: {e}")
+
+    def __del__(self):
+        """Destructeur - ferme le driver si encore ouvert"""
+        self.cleanup()
+
     def print_stats(self):
         """Affiche les statistiques"""
         print("\n" + "="*60)
@@ -269,6 +378,9 @@ class UntappdIBUFetcher:
         print(f"Total de bières:           {self.stats['total']}")
         print(f"IBU déjà présents:         {self.stats['skipped']}")
         print(f"IBU trouvés:               {self.stats['found']}")
+        if self.use_selenium:
+            print(f"  - depuis l'API:          {self.stats['found'] - self.stats['scraped']}")
+            print(f"  - scrapés depuis pages:  {self.stats['scraped']}")
         print(f"IBU non trouvés:           {self.stats['not_found']}")
         print(f"Erreurs:                   {self.stats['errors']}")
 
@@ -331,7 +443,7 @@ def main():
         print(f"⚠ Impossible de créer le backup: {e}")
 
     # Récupère les IBU
-    fetcher = UntappdIBUFetcher(delay=0.5, min_ratings=5)
+    fetcher = UntappdIBUFetcher(delay=0.5, min_ratings=5, use_selenium=True)
 
     try:
         enriched_beers = fetcher.fetch_ibus(beers)
@@ -357,7 +469,10 @@ def main():
         print(f"\n❌ Erreur: {e}")
         import traceback
         traceback.print_exc()
-        sys.exit(1)
+
+    finally:
+        # Ferme le driver Selenium proprement
+        fetcher.cleanup()
 
 
 if __name__ == "__main__":
