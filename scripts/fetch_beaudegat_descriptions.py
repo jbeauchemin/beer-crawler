@@ -64,6 +64,7 @@ class BeaudegatDescriptionFetcher:
 
             # Collect all text parts, skipping metadata and style tags
             description_parts = []
+            text_to_skip = []  # Track text from metadata/style paragraphs to skip
 
             # Process paragraphs (skip metadata and style-only paragraphs)
             for i, p in enumerate(paragraphs):
@@ -73,12 +74,14 @@ class BeaudegatDescriptionFetcher:
                 if re.search(r'\d+\.?\d*\s*%', text, re.IGNORECASE) and re.search(r'\d+\s*ml', text, re.IGNORECASE):
                     if self.debug:
                         print(f"  🔍 DEBUG: Skipping metadata paragraph: {text[:80]}")
+                    text_to_skip.append(text)
                     continue
 
                 # Skip style-only paragraphs (HOUBLONNÉE, BLONDE, etc.)
                 if re.match(r'^.*?(NOIRE|BLONDE|ROUSSE|BLANCHE|HOUBLONNÉE|SOIF|SÛRE|COMPLEXE)\s*$', text, re.IGNORECASE):
                     if self.debug:
                         print(f"  🔍 DEBUG: Skipping style paragraph: {text[:80]}")
+                    text_to_skip.append(text)
                     continue
 
                 # Skip very short text
@@ -97,6 +100,28 @@ class BeaudegatDescriptionFetcher:
 
                 if text and len(text) > 20:
                     description_parts.append(text)
+
+            # If no description parts found, try to extract direct text from desc_div
+            # (some pages have description as direct text, not in p or div tags)
+            if not description_parts:
+                if self.debug:
+                    print(f"  🔍 DEBUG: No p/div content found, trying to extract direct text from desc_div")
+
+                # Get all text from desc_div
+                full_text = desc_div.get_text(separator=' ', strip=True)
+
+                # Remove text from metadata/style paragraphs we identified
+                for skip_text in text_to_skip:
+                    full_text = full_text.replace(skip_text, '')
+
+                # Clean up whitespace
+                full_text = ' '.join(full_text.split()).strip()
+
+                if self.debug:
+                    print(f"  🔍 DEBUG: Extracted direct text: {full_text[:100]}")
+
+                if len(full_text) > 20:
+                    description_parts.append(full_text)
 
             if not description_parts:
                 if self.debug:
