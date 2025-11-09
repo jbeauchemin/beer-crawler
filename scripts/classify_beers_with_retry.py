@@ -122,7 +122,6 @@ Descriptions:
    - STRONG: 7-15%
 
 5. description_fr - Write a FUN, FRIENDLY French description (2-3 sentences, 50-80 words)
-
    Make it friendly, funny, and pleasant to read. Use a casual tone like talking to a friend.
    SAFETY RULE: Never reference minors, children, or underage drinking ("mineur", "enfant", "jeune")
 
