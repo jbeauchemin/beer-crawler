@@ -16,6 +16,25 @@ from pathlib import Path
 def clean_beer_entry(beer):
     """Clean a single beer entry, removing unnecessary fields."""
 
+    # Build photo_urls from all available image sources
+    photo_urls = beer.get("photo_urls", {}).copy()
+
+    # Add photo_url if available and not already in photo_urls
+    if beer.get("photo_url") and not any(beer["photo_url"] == url for url in photo_urls.values()):
+        source = beer.get("source", "unknown")
+        photo_urls[source] = beer["photo_url"]
+
+    # Add untappd_label if available and not a default placeholder
+    if beer.get("untappd_label"):
+        label_url = beer["untappd_label"]
+        # Filter out Untappd default images
+        if "badge-beer-default" not in label_url and "temp/" not in label_url:
+            photo_urls["untappd"] = label_url
+
+    # Filter out any placeholder images
+    photo_urls = {k: v for k, v in photo_urls.items()
+                  if v and "placeholder" not in v.lower()}
+
     # Fields to keep for LLM context
     cleaned = {
         "name": beer.get("name"),
@@ -25,7 +44,7 @@ def clean_beer_entry(beer):
         "sources": beer.get("sources", []),
         "urls": beer.get("urls", []),
         "descriptions": beer.get("descriptions", {}),
-        "photo_urls": beer.get("photo_urls", {}),
+        "photo_urls": photo_urls,
         "styles": beer.get("styles", {}),
         "sub_styles": beer.get("sub_styles", {}),
         "upc": beer.get("upc"),
