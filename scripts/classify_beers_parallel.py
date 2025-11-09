@@ -110,6 +110,30 @@ def extract_abv(beer: Dict) -> Optional[float]:
     return None
 
 
+def calculate_alcohol_strength(abv: Optional[float]) -> str:
+    """Calculate alcohol strength based on ABV thresholds.
+
+    This is done in Python instead of by the LLM for 100% accuracy.
+
+    Thresholds:
+    - ALCOHOL_FREE: 0-0.5%
+    - LIGHT: 0.5-4.5%
+    - MEDIUM: 4.5-7.0%
+    - STRONG: >7.0%
+    """
+    if abv is None:
+        return "MEDIUM"  # Default for unknown ABV
+
+    if abv < 0.5:
+        return "ALCOHOL_FREE"
+    elif abv < 4.5:
+        return "LIGHT"
+    elif abv <= 7.0:
+        return "MEDIUM"
+    else:
+        return "STRONG"
+
+
 def build_classification_prompt(beer: Dict) -> str:
     """Build the prompt for LLM classification."""
     name = beer.get('name', 'Unknown')
@@ -162,20 +186,12 @@ Descriptions:
    - MEDIUM: 20-40 IBU (Pale Ale, Amber, some IPAs)
    - HIGH: 40+ IBU (IPA, Double IPA)
 
-4. alcohol_strength - Based on ABV (FOLLOW THESE RULES EXACTLY):
-   - ALCOHOL_FREE: 0-0.5%
-   - LIGHT: 0.5% to 4.5% (examples: 3.0%, 3.5%, 4.0%, 4.2%)
-   - MEDIUM: 4.5% to 7.0% (examples: 4.8%, 5.0%, 5.5%, 6.2%, 6.5%, 7.0%)
-   - STRONG: over 7.0% (examples: 7.5%, 8.0%, 10.0%)
-
-   IMPORTANT: 4.5% and above = MEDIUM or STRONG, NOT LIGHT!
-
-5. description_fr - Write a FUN, FRIENDLY French description (2-3 sentences, 50-80 words)
+4. description_fr - Write a FUN, FRIENDLY French description (2-3 sentences, 50-80 words)
 
    Make it friendly, funny, and pleasant to read. Use a casual tone like talking to a friend.
    SAFETY RULE: Never reference minors, children, or underage drinking ("mineur", "enfant", "jeune")
 
-6. description_en - Write a FUN, FRIENDLY English description (2-3 sentences, 50-80 words)
+5. description_en - Write a FUN, FRIENDLY English description (2-3 sentences, 50-80 words)
 
    Same: make it casual, fun, and enjoyable to read. Don't be too serious. Think beer blog vibes.
    SAFETY RULE: Never reference minors, children, or underage drinking ("minor", "kid", "youth")
@@ -190,7 +206,6 @@ Respond with ONLY valid JSON:
   "style_code": "...",
   "flavors": ["...", "...", "..."],
   "bitterness_level": "...",
-  "alcohol_strength": "...",
   "description_fr": "...",
   "description_en": "..."
 }}"""
@@ -234,7 +249,7 @@ def validate_classification(classification: Dict) -> bool:
     if not classification:
         return False
 
-    required_fields = ['style_code', 'flavors', 'bitterness_level', 'alcohol_strength',
+    required_fields = ['style_code', 'flavors', 'bitterness_level',
                       'description_fr', 'description_en']
     if not all(field in classification for field in required_fields):
         return False
@@ -250,9 +265,6 @@ def validate_classification(classification: Dict) -> bool:
         return False
 
     if classification['bitterness_level'] not in BITTERNESS_LEVELS:
-        return False
-
-    if classification['alcohol_strength'] not in ALCOHOL_STRENGTHS:
         return False
 
     return True
@@ -288,6 +300,9 @@ def format_for_prisma(beer: Dict, classification: Optional[Dict]) -> Dict:
     # Extract ABV from multiple sources
     abv_value = extract_abv(beer)
 
+    # Calculate alcohol_strength from ABV (not from LLM for 100% accuracy)
+    alcohol_strength = calculate_alcohol_strength(abv_value)
+
     # Get rating info
     num_ratings = beer.get('untappd_rating_count', 0)
     rating = beer.get('untappd_rating', 0)
@@ -306,12 +321,13 @@ def format_for_prisma(beer: Dict, classification: Optional[Dict]) -> Dict:
         "producer": {
             "name": beer.get('producer')
         },
-        "rawData": beer
+        "rawData": beer,
+        # Always include alcohol_strength (calculated from ABV)
+        "alcoholStrength": alcohol_strength
     }
 
     if classification:
         prisma_beer.update({
-            "alcoholStrength": classification['alcohol_strength'],
             "bitternessLevel": classification['bitterness_level'],
             "descriptionFr": classification['description_fr'],
             "descriptionEn": classification['description_en'],
