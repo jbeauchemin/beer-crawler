@@ -35,6 +35,22 @@ def clean_beer_entry(beer):
     photo_urls = {k: v for k, v in photo_urls.items()
                   if v and "placeholder" not in v.lower()}
 
+    # Build descriptions from all available sources
+    descriptions = beer.get("descriptions", {}).copy()
+
+    # Add description (singular) if available and not already in descriptions
+    if beer.get("description") and not any(beer["description"] == desc for desc in descriptions.values()):
+        source = beer.get("source", "unknown")
+        descriptions[source] = beer["description"]
+
+    # Build styles from all available sources
+    styles = beer.get("styles", {}).copy()
+
+    # Add style (singular) if available and not already in styles
+    if beer.get("style") and not any(beer["style"] == s for s in styles.values()):
+        source = beer.get("source", "unknown")
+        styles[source] = beer["style"]
+
     # Fields to keep for LLM context
     cleaned = {
         "name": beer.get("name"),
@@ -43,9 +59,9 @@ def clean_beer_entry(beer):
         "volume": beer.get("volume"),
         "sources": beer.get("sources", []),
         "urls": beer.get("urls", []),
-        "descriptions": beer.get("descriptions", {}),
+        "descriptions": descriptions,
         "photo_urls": photo_urls,
-        "styles": beer.get("styles", {}),
+        "styles": styles,
         "sub_styles": beer.get("sub_styles", {}),
         "upc": beer.get("upc"),
         "untappd_rating": beer.get("untappd_rating"),
