@@ -13,8 +13,11 @@ import json
 import sys
 import re
 import time
+import argparse
 from pathlib import Path
 from typing import Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
 
 try:
     import requests
@@ -25,6 +28,8 @@ except ImportError:
     print("⚠️  Warning: requests or beautifulsoup4 not installed. Skipping description fetching.")
     print("   Install with: pip install requests beautifulsoup4")
 
+# Global lock for thread-safe printing
+print_lock = Lock()
 
 def fetch_beaudegat_description(url: str) -> Optional[str]:
     """Fetch beer description from beaudegat website."""
@@ -116,7 +121,8 @@ def clean_beer_entry(beer):
             fetched_desc = fetch_beaudegat_description(beaudegat_url)
             if fetched_desc:
                 descriptions["beaudegat"] = fetched_desc
-                print(f"  ✓ Fetched description for {beer.get('name')}")
+                with print_lock:
+                    print(f"  ✓ Fetched description for {beer.get('name')}")
 
     # Build styles from all available sources
     styles = beer.get("styles", {}).copy()
@@ -160,32 +166,80 @@ def clean_beer_entry(beer):
 
 
 def main():
-    if len(sys.argv) != 3:
-        print("Usage: python clean_beer_data.py <input.json> <output.json>")
-        print("Example: python clean_beer_data.py beers_json_perfect_v6.json beers_cleaned.json")
+    parser = argparse.ArgumentParser(
+        description='Clean beer JSON data before LLM classification',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Examples:
+  # Sequential processing (default)
+  python clean_beer_data.py input.json output.json
+
+  # Parallel processing with 5 workers
+  python clean_beer_data.py input.json output.json --workers 5
+
+  # Parallel processing with 10 workers (faster for large datasets)
+  python clean_beer_data.py input.json output.json -w 10
+        '''
+    )
+    parser.add_argument('input_file', type=Path, help='Input JSON file')
+    parser.add_argument('output_file', type=Path, help='Output JSON file')
+    parser.add_argument('-w', '--workers', type=int, default=1,
+                        help='Number of parallel workers (default: 1 = sequential)')
+
+    args = parser.parse_args()
+
+    if not args.input_file.exists():
+        print(f"❌ Error: Input file '{args.input_file}' not found")
         sys.exit(1)
 
-    input_file = Path(sys.argv[1])
-    output_file = Path(sys.argv[2])
-
-    if not input_file.exists():
-        print(f"❌ Error: Input file '{input_file}' not found")
-        sys.exit(1)
-
-    print(f"📖 Loading beers from {input_file}...")
-    with open(input_file, 'r', encoding='utf-8') as f:
+    print(f"📖 Loading beers from {args.input_file}...")
+    with open(args.input_file, 'r', encoding='utf-8') as f:
         beers = json.load(f)
 
     print(f"✂️  Cleaning {len(beers)} beers...")
-    cleaned_beers = [clean_beer_entry(beer) for beer in beers]
 
-    print(f"💾 Saving cleaned data to {output_file}...")
-    with open(output_file, 'w', encoding='utf-8') as f:
+    if args.workers > 1:
+        print(f"🚀 Using {args.workers} parallel workers")
+        cleaned_beers = []
+
+        with ThreadPoolExecutor(max_workers=args.workers) as executor:
+            # Submit all jobs
+            future_to_beer = {executor.submit(clean_beer_entry, beer): i
+                             for i, beer in enumerate(beers)}
+
+            # Collect results as they complete
+            results = [None] * len(beers)
+            completed = 0
+
+            for future in as_completed(future_to_beer):
+                idx = future_to_beer[future]
+                try:
+                    results[idx] = future.result()
+                    completed += 1
+                    if completed % 100 == 0:
+                        with print_lock:
+                            print(f"  Progress: {completed}/{len(beers)} beers processed")
+                except Exception as e:
+                    with print_lock:
+                        print(f"⚠️  Error processing beer {idx}: {e}")
+                    results[idx] = None
+
+            cleaned_beers = [r for r in results if r is not None]
+    else:
+        # Sequential processing
+        cleaned_beers = []
+        for i, beer in enumerate(beers):
+            cleaned_beers.append(clean_beer_entry(beer))
+            if (i + 1) % 100 == 0:
+                print(f"  Progress: {i + 1}/{len(beers)} beers processed")
+
+    print(f"💾 Saving cleaned data to {args.output_file}...")
+    with open(args.output_file, 'w', encoding='utf-8') as f:
         json.dump(cleaned_beers, f, ensure_ascii=False, indent=2)
 
     # Calculate size reduction
-    input_size = input_file.stat().st_size / 1024 / 1024  # MB
-    output_size = output_file.stat().st_size / 1024 / 1024  # MB
+    input_size = args.input_file.stat().st_size / 1024 / 1024  # MB
+    output_size = args.output_file.stat().st_size / 1024 / 1024  # MB
     reduction = ((input_size - output_size) / input_size) * 100
 
     print(f"\n✅ Done!")
