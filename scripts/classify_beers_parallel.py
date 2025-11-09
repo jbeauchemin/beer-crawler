@@ -67,11 +67,41 @@ FLAVOR_NAMES = {
 }
 
 
+def extract_abv(beer: Dict) -> Optional[float]:
+    """Extract ABV from beer data, trying multiple sources."""
+    import re
+
+    # Try abv_normalized first (preferred)
+    if beer.get('abv_normalized'):
+        return float(beer['abv_normalized'])
+
+    # Try direct 'abv' field
+    if beer.get('abv'):
+        abv_val = beer['abv']
+        if isinstance(abv_val, (int, float)):
+            return float(abv_val)
+        # If it's a string, try to parse it
+        if isinstance(abv_val, str):
+            match = re.search(r'(\d+\.?\d*)\s*%?', abv_val)
+            if match:
+                return float(match.group(1))
+
+    # Try 'alcohol' field in rawData (fallback)
+    if 'alcohol' in beer:
+        alcohol = beer['alcohol']
+        if isinstance(alcohol, str):
+            match = re.search(r'(\d+\.?\d*)\s*%', alcohol)
+            if match:
+                return float(match.group(1))
+
+    return None
+
+
 def build_classification_prompt(beer: Dict) -> str:
     """Build the prompt for LLM classification."""
     name = beer.get('name', 'Unknown')
     producer = beer.get('producer', 'Unknown')
-    abv = beer.get('abv_normalized')
+    abv = extract_abv(beer)
     ibu = beer.get('ibu_normalized')
 
     descriptions = beer.get('descriptions', {})
@@ -121,9 +151,9 @@ Descriptions:
 
 4. alcohol_strength - Based on ABV:
    - ALCOHOL_FREE: 0-0.5%
-   - LIGHT: 0.5-5%
-   - MEDIUM: 5-7%
-   - STRONG: 7-15%
+   - LIGHT: 0.5% to under 5%
+   - MEDIUM: 5-7% (inclusive)
+   - STRONG: over 7%
 
 5. description_fr - Write a FUN, FRIENDLY French description (2-3 sentences, 50-80 words)
 
@@ -240,10 +270,13 @@ def get_first_image(photo_urls: Dict) -> Optional[str]:
 
 def format_for_prisma(beer: Dict, classification: Optional[Dict]) -> Dict:
     """Format beer data for Prisma schema."""
+    # Extract ABV from multiple sources
+    abv_value = extract_abv(beer)
+
     prisma_beer = {
         "codeBar": beer.get('upc') or None,
         "productName": beer.get('name'),
-        "abv": str(beer.get('abv_normalized')) if beer.get('abv_normalized') else None,
+        "abv": str(abv_value) if abv_value else None,
         "ibu": str(beer.get('ibu_normalized')) if beer.get('ibu_normalized') else None,
         "rating": str(beer.get('untappd_rating', 0)),
         "numRatings": beer.get('untappd_rating_count', 0),
