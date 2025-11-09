@@ -63,11 +63,44 @@ FLAVOR_NAMES = {
 }
 
 
+def extract_abv(beer: Dict) -> Optional[float]:
+    """Extract ABV from beer data, trying multiple sources."""
+    import re
+
+    # If this is a Prisma-formatted beer, get the original from rawData
+    original_beer = beer.get('rawData', beer)
+
+    # Try abv_normalized first (preferred)
+    if original_beer.get('abv_normalized'):
+        return float(original_beer['abv_normalized'])
+
+    # Try direct 'abv' field (could be string from Prisma format)
+    if beer.get('abv'):
+        abv_val = beer['abv']
+        if isinstance(abv_val, (int, float)):
+            return float(abv_val)
+        # If it's a string, try to parse it
+        if isinstance(abv_val, str) and abv_val != 'null':
+            match = re.search(r'(\d+\.?\d*)\s*%?', abv_val)
+            if match:
+                return float(match.group(1))
+
+    # Try 'alcohol' field
+    if 'alcohol' in original_beer:
+        alcohol = original_beer['alcohol']
+        if isinstance(alcohol, str):
+            match = re.search(r'(\d+\.?\d*)\s*%', alcohol)
+            if match:
+                return float(match.group(1))
+
+    return None
+
+
 def build_classification_prompt(beer: Dict) -> str:
     """Build the prompt for LLM classification."""
     name = beer.get('name', 'Unknown')
     producer = beer.get('producer', 'Unknown')
-    abv = beer.get('abv_normalized')
+    abv = extract_abv(beer)
     ibu = beer.get('ibu_normalized')
 
     descriptions = beer.get('descriptions', {})
@@ -115,11 +148,13 @@ Descriptions:
    - MEDIUM: 20-40 IBU (Pale Ale, Amber, some IPAs)
    - HIGH: 40+ IBU (IPA, Double IPA)
 
-4. alcohol_strength - Based on ABV:
+4. alcohol_strength - Based on ABV (FOLLOW THESE RULES EXACTLY):
    - ALCOHOL_FREE: 0-0.5%
-   - LIGHT: 0.5-5%
-   - MEDIUM: 5-7%
-   - STRONG: 7-15%
+   - LIGHT: 0.5% to 4.9% (examples: 3.5%, 4.2%, 4.8%)
+   - MEDIUM: 5.0% to 7.0% (examples: 5.0%, 5.3%, 5.5%, 6.2%, 6.5%, 7.0%)
+   - STRONG: over 7.0% (examples: 7.5%, 8.0%, 10.0%)
+
+   IMPORTANT: 5.0% and above = MEDIUM or STRONG, NOT LIGHT!
 
 5. description_fr - Write a FUN, FRIENDLY French description (2-3 sentences, 50-80 words)
 
@@ -234,12 +269,14 @@ def get_first_image(photo_urls: Dict) -> Optional[str]:
 
 def format_for_prisma(beer: Dict, classification: Optional[Dict]) -> Dict:
     """Format beer data for Prisma schema."""
+    # Extract ABV from multiple sources
+    abv_value = extract_abv(beer)
 
     # Base beer data
     prisma_beer = {
         "codeBar": beer.get('upc') or None,  # Can be null
         "productName": beer.get('name'),
-        "abv": str(beer.get('abv_normalized')) if beer.get('abv_normalized') else None,
+        "abv": str(abv_value) if abv_value else None,
         "ibu": str(beer.get('ibu_normalized')) if beer.get('ibu_normalized') else None,
         "rating": str(beer.get('untappd_rating', 0)),
         "numRatings": beer.get('untappd_rating_count', 0),
