@@ -110,15 +110,20 @@ class BeaudegatDescriptionFetcher:
                 # Get all text from desc_div
                 full_text = desc_div.get_text(separator=' ', strip=True)
 
-                # Remove text from metadata/style paragraphs we identified
-                for skip_text in text_to_skip:
-                    full_text = full_text.replace(skip_text, '')
+                # Remove metadata line at the beginning (everything up to and including ml or %)
+                # Pattern: anything ending with "% - XXXml" or "XXXml - X%"
+                # We want to remove everything up to the last "ml" in the first sentence
+                full_text = re.sub(r'^.*?\d+\s*ml\s*', '', full_text, count=1, flags=re.IGNORECASE)
+
+                # If that didn't work (no ml found), try removing up to %
+                if re.search(r'^\s*\d+\.?\d*\s*%', full_text, re.IGNORECASE):
+                    full_text = re.sub(r'^.*?\d+\.?\d*\s*%\s*', '', full_text, count=1, flags=re.IGNORECASE)
 
                 # Clean up whitespace
                 full_text = ' '.join(full_text.split()).strip()
 
                 if self.debug:
-                    print(f"  🔍 DEBUG: Extracted direct text: {full_text[:100]}")
+                    print(f"  🔍 DEBUG: Extracted direct text after cleanup: {full_text[:100]}")
 
                 if len(full_text) > 20:
                     description_parts.append(full_text)
