@@ -31,16 +31,92 @@ except ImportError:
     print("⚠️  Warning: requests or beautifulsoup4 not installed. Skipping description fetching.")
     print("   Install with: pip install requests beautifulsoup4")
 
+# Try to import Selenium
+try:
+    from selenium import webdriver
+    from selenium.webdriver.chrome.options import Options
+    SELENIUM_AVAILABLE = True
+    DRIVER = None  # Will be initialized when needed
+except ImportError:
+    SELENIUM_AVAILABLE = False
+    DRIVER = None
+
 # Global lock for thread-safe printing
 print_lock = Lock()
 
 # Global delay between requests (can be overridden via CLI)
 REQUEST_DELAY = 2.0
 SKIP_FETCH = False
+USE_SELENIUM = False
+
+def init_selenium_driver():
+    """Initialize Selenium WebDriver (headless Chrome)."""
+    global DRIVER
+    if DRIVER is None and SELENIUM_AVAILABLE:
+        chrome_options = Options()
+        chrome_options.add_argument('--headless')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36')
+        DRIVER = webdriver.Chrome(options=chrome_options)
+        with print_lock:
+            print("🌐 Selenium WebDriver initialized (headless Chrome)")
+    return DRIVER
+
+
+def fetch_with_selenium(url: str) -> Optional[str]:
+    """Fetch description using Selenium (bypasses anti-bot)."""
+    global DRIVER
+
+    if DRIVER is None:
+        DRIVER = init_selenium_driver()
+
+    if DRIVER is None:
+        return None
+
+    try:
+        time.sleep(REQUEST_DELAY)
+        DRIVER.get(url)
+        time.sleep(2)  # Wait for page to load
+
+        soup = BeautifulSoup(DRIVER.page_source, 'html.parser')
+
+        # Find the product description div
+        desc_div = soup.find('div', class_='product__description')
+        if not desc_div:
+            return None
+
+        # Get text and clean it
+        text = desc_div.get_text(separator=' ', strip=True)
+
+        # Remove common patterns that aren't part of the description
+        text = re.sub(r'^[^-]+ - \d+\.?\d*% - \d+\s*ml\s*', '', text)
+        text = re.sub(r'^\s*(NOIRE|BLONDE|ROUSSE|BLANCHE|HOUBLONNÉE|SOIF|SÛRE|COMPLEXE)\s*', '', text, flags=re.IGNORECASE)
+        text = ' '.join(text.split())
+
+        return text.strip() if text else None
+
+    except Exception as e:
+        with print_lock:
+            print(f"⚠️  Selenium error for {url}: {e}")
+        return None
+
 
 def fetch_beaudegat_description(url: str, max_retries: int = 3) -> Optional[str]:
     """Fetch beer description from beaudegat website with retry logic."""
-    if not SCRAPING_AVAILABLE or SKIP_FETCH:
+    if SKIP_FETCH:
+        return None
+
+    # Use Selenium if enabled and available
+    if USE_SELENIUM:
+        if not SELENIUM_AVAILABLE:
+            with print_lock:
+                print("⚠️  Selenium not available. Install with: pip install selenium")
+            return None
+        return fetch_with_selenium(url)
+
+    # Otherwise use requests (original method)
+    if not SCRAPING_AVAILABLE:
         return None
 
     headers = {
@@ -58,41 +134,26 @@ def fetch_beaudegat_description(url: str, max_retries: int = 3) -> Optional[str]
 
     for attempt in range(max_retries):
         try:
-            # Add delay to be polite to the server
             time.sleep(REQUEST_DELAY)
-
             response = SESSION.get(url, headers=headers, timeout=10)
 
-            # Handle rate limiting with exponential backoff
             if response.status_code == 429:
-                wait_time = 5 * (2 ** attempt)  # 5s, 10s, 20s
+                wait_time = 5 * (2 ** attempt)
                 with print_lock:
                     print(f"⏳ Rate limited. Waiting {wait_time}s before retry {attempt + 1}/{max_retries}...")
                 time.sleep(wait_time)
                 continue
 
             response.raise_for_status()
-
             soup = BeautifulSoup(response.text, 'html.parser')
-
-            # Find the product description div
             desc_div = soup.find('div', class_='product__description')
             if not desc_div:
                 return None
 
-            # Get text and clean it
             text = desc_div.get_text(separator=' ', strip=True)
-
-            # Remove common patterns that aren't part of the description
-            # Remove producer info line (e.g., "Microbrasserie Le Trèfle Noir - 7.0% - 355 ml")
             text = re.sub(r'^[^-]+ - \d+\.?\d*% - \d+\s*ml\s*', '', text)
-
-            # Remove style tags (e.g., "NOIRE", "HOUBLONNÉE")
             text = re.sub(r'^\s*(NOIRE|BLONDE|ROUSSE|BLANCHE|HOUBLONNÉE|SOIF|SÛRE|COMPLEXE)\s*', '', text, flags=re.IGNORECASE)
-
-            # Clean up whitespace
             text = ' '.join(text.split())
-
             return text.strip() if text else None
 
         except requests.exceptions.HTTPError as e:
@@ -212,14 +273,14 @@ Examples:
   # Sequential processing (default)
   python clean_beer_data.py input.json output.json
 
-  # Skip web fetching (recommended if site blocks automated requests)
+  # Skip web fetching (fastest, uses only existing data)
   python clean_beer_data.py input.json output.json --skip-fetch
 
-  # Parallel processing with 5 workers
-  python clean_beer_data.py input.json output.json --workers 5 --skip-fetch
+  # Use Selenium to bypass anti-bot protection (slower but works)
+  python clean_beer_data.py input.json output.json --use-selenium
 
-  # Parallel processing with 10 workers (faster for large datasets)
-  python clean_beer_data.py input.json output.json -w 10 --skip-fetch
+  # Parallel processing with Selenium (NOT recommended - use sequential)
+  python clean_beer_data.py input.json output.json --use-selenium -w 1
         '''
     )
     parser.add_argument('input_file', type=Path, help='Input JSON file')
@@ -230,13 +291,16 @@ Examples:
                         help='Delay between web requests in seconds (default: 2.0)')
     parser.add_argument('--skip-fetch', action='store_true',
                         help='Skip fetching missing descriptions from web (faster, but some beers may lack descriptions)')
+    parser.add_argument('--use-selenium', action='store_true',
+                        help='Use Selenium WebDriver to bypass anti-bot protection (requires: pip install selenium)')
 
     args = parser.parse_args()
 
     # Set global flags
-    global REQUEST_DELAY, SKIP_FETCH
+    global REQUEST_DELAY, SKIP_FETCH, USE_SELENIUM
     REQUEST_DELAY = args.delay
     SKIP_FETCH = args.skip_fetch
+    USE_SELENIUM = args.use_selenium
 
     if not args.input_file.exists():
         print(f"❌ Error: Input file '{args.input_file}' not found")
@@ -245,6 +309,10 @@ Examples:
     print(f"📖 Loading beers from {args.input_file}...")
     if args.skip_fetch:
         print(f"⚠️  Web fetching disabled (--skip-fetch)")
+    elif args.use_selenium:
+        print(f"🌐 Using Selenium WebDriver (bypasses anti-bot)")
+        if args.delay != 2.0:
+            print(f"⏱️  Request delay: {args.delay}s")
     elif args.delay != 2.0:
         print(f"⏱️  Request delay: {args.delay}s")
     with open(args.input_file, 'r', encoding='utf-8') as f:
@@ -301,6 +369,15 @@ Examples:
     print(f"   Cleaned:  {output_size:.2f} MB")
     print(f"   Reduction: {reduction:.1f}%")
     print(f"   Beers processed: {len(cleaned_beers)}")
+
+    # Cleanup Selenium driver
+    global DRIVER
+    if DRIVER is not None:
+        try:
+            DRIVER.quit()
+            print("🌐 Selenium WebDriver closed")
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
