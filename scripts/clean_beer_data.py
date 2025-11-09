@@ -6,11 +6,63 @@ Removes unnecessary fields and prepares data for classification:
 - Removes: price, availability, source, pack_info, prices, region, etc.
 - Keeps: urls, descriptions, photo_urls, styles, sub_styles for LLM context
 - Removes existing classifications to regenerate from scratch
+- Fetches missing descriptions from beaudegat website
 """
 
 import json
 import sys
+import re
+import time
 from pathlib import Path
+from typing import Optional
+
+try:
+    import requests
+    from bs4 import BeautifulSoup
+    SCRAPING_AVAILABLE = True
+except ImportError:
+    SCRAPING_AVAILABLE = False
+    print("⚠️  Warning: requests or beautifulsoup4 not installed. Skipping description fetching.")
+    print("   Install with: pip install requests beautifulsoup4")
+
+
+def fetch_beaudegat_description(url: str) -> Optional[str]:
+    """Fetch beer description from beaudegat website."""
+    if not SCRAPING_AVAILABLE:
+        return None
+
+    try:
+        # Add delay to be polite to the server
+        time.sleep(0.5)
+
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Find the product description div
+        desc_div = soup.find('div', class_='product__description')
+        if not desc_div:
+            return None
+
+        # Get text and clean it
+        text = desc_div.get_text(separator=' ', strip=True)
+
+        # Remove common patterns that aren't part of the description
+        # Remove producer info line (e.g., "Microbrasserie Le Trèfle Noir - 7.0% - 355 ml")
+        text = re.sub(r'^[^-]+ - \d+\.?\d*% - \d+\s*ml\s*', '', text)
+
+        # Remove style tags (e.g., "NOIRE", "HOUBLONNÉE")
+        text = re.sub(r'^\s*(NOIRE|BLONDE|ROUSSE|BLANCHE|HOUBLONNÉE|SOIF|SÛRE|COMPLEXE)\s*', '', text, flags=re.IGNORECASE)
+
+        # Clean up whitespace
+        text = ' '.join(text.split())
+
+        return text.strip() if text else None
+
+    except Exception as e:
+        print(f"⚠️  Failed to fetch description from {url}: {e}")
+        return None
 
 
 def clean_beer_entry(beer):
@@ -42,6 +94,29 @@ def clean_beer_entry(beer):
     if beer.get("description") and not any(beer["description"] == desc for desc in descriptions.values()):
         source = beer.get("source", "unknown")
         descriptions[source] = beer["description"]
+
+    # If no descriptions and we have a beaudegat URL, try to fetch it
+    if not descriptions and SCRAPING_AVAILABLE:
+        beaudegat_url = None
+
+        # Check if there's a beaudegat URL in urls list
+        urls = beer.get("urls", [])
+        if isinstance(urls, list):
+            for url in urls:
+                if "beaudegat.ca" in url:
+                    beaudegat_url = url
+                    break
+
+        # Or check if there's a single url field
+        if not beaudegat_url and beer.get("url") and "beaudegat.ca" in beer.get("url", ""):
+            beaudegat_url = beer["url"]
+
+        # Fetch description from beaudegat
+        if beaudegat_url:
+            fetched_desc = fetch_beaudegat_description(beaudegat_url)
+            if fetched_desc:
+                descriptions["beaudegat"] = fetched_desc
+                print(f"  ✓ Fetched description for {beer.get('name')}")
 
     # Build styles from all available sources
     styles = beer.get("styles", {}).copy()
