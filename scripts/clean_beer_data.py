@@ -86,15 +86,28 @@ def fetch_with_selenium(url: str) -> Optional[str]:
         if not desc_div:
             return None
 
-        # Get text and clean it
-        text = desc_div.get_text(separator=' ', strip=True)
+        # Extract text from paragraphs (skip first line and style tags)
+        paragraphs = desc_div.find_all('p')
+        description_parts = []
 
-        # Remove common patterns that aren't part of the description
-        text = re.sub(r'^[^-]+ - \d+\.?\d*% - \d+\s*ml\s*', '', text)
-        text = re.sub(r'^\s*(NOIRE|BLONDE|ROUSSE|BLANCHE|HOUBLONNÉE|SOIF|SÛRE|COMPLEXE)\s*', '', text, flags=re.IGNORECASE)
-        text = ' '.join(text.split())
+        for p in paragraphs:
+            text = p.get_text(strip=True)
+            # Skip paragraphs with style tags only (NOIRE, BLONDE, etc.)
+            if text and not re.match(r'^(NOIRE|BLONDE|ROUSSE|BLANCHE|HOUBLONNÉE|SOIF|SÛRE|COMPLEXE)$', text, re.IGNORECASE):
+                # Skip meta tags and very short text
+                if len(text) > 20:
+                    description_parts.append(text)
 
-        return text.strip() if text else None
+        # If no paragraphs found, try getting all text
+        if not description_parts:
+            text = desc_div.get_text(separator=' ', strip=True)
+            # Remove producer info line (various formats)
+            text = re.sub(r'^[^-]+\d+\.?\d*\s*%[^A-Z]*', '', text)
+            text = re.sub(r'^\s*(NOIRE|BLONDE|ROUSSE|BLANCHE|HOUBLONNÉE|SOIF|SÛRE|COMPLEXE)\s*', '', text, flags=re.IGNORECASE)
+            text = ' '.join(text.split())
+            return text.strip() if text else None
+
+        return ' '.join(description_parts).strip()
 
     except Exception as e:
         with print_lock:
@@ -150,11 +163,28 @@ def fetch_beaudegat_description(url: str, max_retries: int = 3) -> Optional[str]
             if not desc_div:
                 return None
 
-            text = desc_div.get_text(separator=' ', strip=True)
-            text = re.sub(r'^[^-]+ - \d+\.?\d*% - \d+\s*ml\s*', '', text)
-            text = re.sub(r'^\s*(NOIRE|BLONDE|ROUSSE|BLANCHE|HOUBLONNÉE|SOIF|SÛRE|COMPLEXE)\s*', '', text, flags=re.IGNORECASE)
-            text = ' '.join(text.split())
-            return text.strip() if text else None
+            # Extract text from paragraphs (skip first line and style tags)
+            paragraphs = desc_div.find_all('p')
+            description_parts = []
+
+            for p in paragraphs:
+                text = p.get_text(strip=True)
+                # Skip paragraphs with style tags only (NOIRE, BLONDE, etc.)
+                if text and not re.match(r'^(NOIRE|BLONDE|ROUSSE|BLANCHE|HOUBLONNÉE|SOIF|SÛRE|COMPLEXE)$', text, re.IGNORECASE):
+                    # Skip meta tags and very short text
+                    if len(text) > 20:
+                        description_parts.append(text)
+
+            # If no paragraphs found, try getting all text
+            if not description_parts:
+                text = desc_div.get_text(separator=' ', strip=True)
+                # Remove producer info line (various formats)
+                text = re.sub(r'^[^-]+\d+\.?\d*\s*%[^A-Z]*', '', text)
+                text = re.sub(r'^\s*(NOIRE|BLONDE|ROUSSE|BLANCHE|HOUBLONNÉE|SOIF|SÛRE|COMPLEXE)\s*', '', text, flags=re.IGNORECASE)
+                text = ' '.join(text.split())
+                return text.strip() if text else None
+
+            return ' '.join(description_parts).strip()
 
         except requests.exceptions.HTTPError as e:
             if attempt == max_retries - 1:
@@ -199,8 +229,8 @@ def clean_beer_entry(beer):
         source = beer.get("source", "unknown")
         descriptions[source] = beer["description"]
 
-    # If no descriptions and we have a beaudegat URL, try to fetch it
-    if not descriptions and SCRAPING_AVAILABLE:
+    # If NO beaudegat description and we have a beaudegat URL, try to fetch it
+    if "beaudegat" not in descriptions and SCRAPING_AVAILABLE:
         beaudegat_url = None
 
         # Check if there's a beaudegat URL in urls list
@@ -231,6 +261,21 @@ def clean_beer_entry(beer):
         source = beer.get("source", "unknown")
         styles[source] = beer["style"]
 
+    # Build URLs list from all available sources
+    urls_list = beer.get("urls", [])
+    if not isinstance(urls_list, list):
+        urls_list = []
+    else:
+        urls_list = list(urls_list)  # Make a copy
+
+    # Add url (singular) if available and not already in urls
+    if beer.get("url") and beer["url"] not in urls_list:
+        urls_list.append(beer["url"])
+
+    # Add untappd_url if available and not already in urls
+    if beer.get("untappd_url") and beer["untappd_url"] not in urls_list:
+        urls_list.append(beer["untappd_url"])
+
     # Fields to keep for LLM context
     cleaned = {
         "name": beer.get("name"),
@@ -238,7 +283,7 @@ def clean_beer_entry(beer):
         "alcohol": beer.get("alcohol"),
         "volume": beer.get("volume"),
         "sources": beer.get("sources", []),
-        "urls": beer.get("urls", []),
+        "urls": urls_list,
         "descriptions": descriptions,
         "photo_urls": photo_urls,
         "styles": styles,
