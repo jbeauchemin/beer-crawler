@@ -31,43 +31,68 @@ except ImportError:
 # Global lock for thread-safe printing
 print_lock = Lock()
 
-def fetch_beaudegat_description(url: str) -> Optional[str]:
-    """Fetch beer description from beaudegat website."""
+# Global delay between requests (can be overridden via CLI)
+REQUEST_DELAY = 2.0
+
+def fetch_beaudegat_description(url: str, max_retries: int = 3) -> Optional[str]:
+    """Fetch beer description from beaudegat website with retry logic."""
     if not SCRAPING_AVAILABLE:
         return None
 
-    try:
-        # Add delay to be polite to the server
-        time.sleep(0.5)
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
 
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
+    for attempt in range(max_retries):
+        try:
+            # Add delay to be polite to the server
+            time.sleep(REQUEST_DELAY)
 
-        soup = BeautifulSoup(response.text, 'html.parser')
+            response = requests.get(url, headers=headers, timeout=10)
 
-        # Find the product description div
-        desc_div = soup.find('div', class_='product__description')
-        if not desc_div:
+            # Handle rate limiting with exponential backoff
+            if response.status_code == 429:
+                wait_time = 5 * (2 ** attempt)  # 5s, 10s, 20s
+                with print_lock:
+                    print(f"⏳ Rate limited. Waiting {wait_time}s before retry {attempt + 1}/{max_retries}...")
+                time.sleep(wait_time)
+                continue
+
+            response.raise_for_status()
+
+            soup = BeautifulSoup(response.text, 'html.parser')
+
+            # Find the product description div
+            desc_div = soup.find('div', class_='product__description')
+            if not desc_div:
+                return None
+
+            # Get text and clean it
+            text = desc_div.get_text(separator=' ', strip=True)
+
+            # Remove common patterns that aren't part of the description
+            # Remove producer info line (e.g., "Microbrasserie Le Trèfle Noir - 7.0% - 355 ml")
+            text = re.sub(r'^[^-]+ - \d+\.?\d*% - \d+\s*ml\s*', '', text)
+
+            # Remove style tags (e.g., "NOIRE", "HOUBLONNÉE")
+            text = re.sub(r'^\s*(NOIRE|BLONDE|ROUSSE|BLANCHE|HOUBLONNÉE|SOIF|SÛRE|COMPLEXE)\s*', '', text, flags=re.IGNORECASE)
+
+            # Clean up whitespace
+            text = ' '.join(text.split())
+
+            return text.strip() if text else None
+
+        except requests.exceptions.HTTPError as e:
+            if attempt == max_retries - 1:
+                with print_lock:
+                    print(f"⚠️  Failed to fetch description from {url} after {max_retries} attempts: {e}")
+            continue
+        except Exception as e:
+            with print_lock:
+                print(f"⚠️  Error fetching description from {url}: {e}")
             return None
 
-        # Get text and clean it
-        text = desc_div.get_text(separator=' ', strip=True)
-
-        # Remove common patterns that aren't part of the description
-        # Remove producer info line (e.g., "Microbrasserie Le Trèfle Noir - 7.0% - 355 ml")
-        text = re.sub(r'^[^-]+ - \d+\.?\d*% - \d+\s*ml\s*', '', text)
-
-        # Remove style tags (e.g., "NOIRE", "HOUBLONNÉE")
-        text = re.sub(r'^\s*(NOIRE|BLONDE|ROUSSE|BLANCHE|HOUBLONNÉE|SOIF|SÛRE|COMPLEXE)\s*', '', text, flags=re.IGNORECASE)
-
-        # Clean up whitespace
-        text = ' '.join(text.split())
-
-        return text.strip() if text else None
-
-    except Exception as e:
-        print(f"⚠️  Failed to fetch description from {url}: {e}")
-        return None
+    return None
 
 
 def clean_beer_entry(beer):
@@ -185,14 +210,22 @@ Examples:
     parser.add_argument('output_file', type=Path, help='Output JSON file')
     parser.add_argument('-w', '--workers', type=int, default=1,
                         help='Number of parallel workers (default: 1 = sequential)')
+    parser.add_argument('--delay', type=float, default=2.0,
+                        help='Delay between web requests in seconds (default: 2.0)')
 
     args = parser.parse_args()
+
+    # Set global delay
+    global REQUEST_DELAY
+    REQUEST_DELAY = args.delay
 
     if not args.input_file.exists():
         print(f"❌ Error: Input file '{args.input_file}' not found")
         sys.exit(1)
 
     print(f"📖 Loading beers from {args.input_file}...")
+    if args.delay != 2.0:
+        print(f"⏱️  Request delay: {args.delay}s")
     with open(args.input_file, 'r', encoding='utf-8') as f:
         beers = json.load(f)
 
