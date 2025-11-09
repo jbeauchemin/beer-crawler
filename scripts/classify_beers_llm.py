@@ -119,11 +119,13 @@ Descriptions:
 5. description_fr - Write a FUN, FRIENDLY French description (2-3 sentences, 50-80 words)
 
    Make it friendly, funny, and pleasant to read. Use a casual tone like talking to a friend.
+   Vary your opening words - avoid starting with: "Prépare", "Préparez", "Prêt"
    SAFETY RULE: Never reference minors, children, or underage drinking ("mineur", "enfant", "jeune")
 
 6. description_en - Write a FUN, FRIENDLY English description (2-3 sentences, 50-80 words)
 
    Same: make it casual, fun, and enjoyable to read. Don't be too serious. Think beer blog vibes.
+   Vary your opening words - avoid starting with: "Get ready", "Ready to", "Prepare"
    SAFETY RULE: Never reference minors, children, or underage drinking ("minor", "kid", "youth")
 
 CRITICAL RULES:
