@@ -20,8 +20,9 @@ from bs4 import BeautifulSoup
 
 
 class BeaudegatDescriptionFetcher:
-    def __init__(self, headless=True):
+    def __init__(self, headless=True, debug=False):
         """Initialize Selenium WebDriver."""
+        self.debug = debug
         chrome_options = Options()
         if headless:
             chrome_options.add_argument('--headless')
@@ -43,27 +44,54 @@ class BeaudegatDescriptionFetcher:
             # Find the product description div (note: class is 'product__description rte')
             desc_div = soup.find('div', class_='product__description rte')
             if not desc_div:
+                if self.debug:
+                    print(f"  🔍 DEBUG: No div with class 'product__description rte' found")
                 return None
 
             # Extract all paragraphs
             paragraphs = desc_div.find_all('p')
 
-            if not paragraphs or len(paragraphs) < 3:
+            if self.debug:
+                print(f"  🔍 DEBUG: Found {len(paragraphs)} paragraphs")
+                for i, p in enumerate(paragraphs):
+                    text = p.get_text(strip=True)
+                    print(f"  🔍 DEBUG: Paragraph {i}: {text[:100]}")
+
+            if not paragraphs:
+                if self.debug:
+                    print(f"  🔍 DEBUG: No paragraphs found")
                 return None
 
-            # Structure of paragraphs:
-            # paragraphs[0]: Producer - Alcohol% - Volume ml (metadata)
-            # paragraphs[1]: Style like "HOUBLONNÉE"
-            # paragraphs[2:]: Actual beer description
+            # Handle different structures flexibly
+            # If only 1 paragraph: might be just the description
+            # If 2 paragraphs: might be metadata + description
+            # If 3+ paragraphs: metadata + style + description (standard)
 
-            description_parts = []
-            for p in paragraphs[2:]:
-                text = p.get_text(strip=True)
-                if text:
-                    description_parts.append(text)
+            if len(paragraphs) == 1:
+                # Single paragraph - could be description or metadata
+                text = paragraphs[0].get_text(strip=True)
+                # Check if it's just metadata (contains % and ml)
+                if re.search(r'\d+\.?\d*\s*%.*\d+\s*ml', text, re.IGNORECASE):
+                    if self.debug:
+                        print(f"  🔍 DEBUG: Single paragraph is just metadata")
+                    return None
+                return text.strip() if text else None
 
-            description = ' '.join(description_parts)
-            return description.strip() if description else None
+            elif len(paragraphs) == 2:
+                # Two paragraphs - take the second one (skip metadata)
+                text = paragraphs[1].get_text(strip=True)
+                return text.strip() if text else None
+
+            else:
+                # 3+ paragraphs - standard structure: skip first 2 (metadata + style)
+                description_parts = []
+                for p in paragraphs[2:]:
+                    text = p.get_text(strip=True)
+                    if text:
+                        description_parts.append(text)
+
+                description = ' '.join(description_parts)
+                return description.strip() if description else None
 
         except Exception as e:
             print(f"  ⚠️  Error fetching {url}: {e}")
