@@ -48,50 +48,52 @@ class BeaudegatDescriptionFetcher:
                     print(f"  🔍 DEBUG: No div with class 'product__description rte' found")
                 return None
 
-            # Extract all paragraphs
+            # Extract all paragraphs AND divs (some descriptions are in divs, not p tags)
             paragraphs = desc_div.find_all('p')
+            content_divs = desc_div.find_all('div', recursive=False)  # Direct child divs only
 
             if self.debug:
-                print(f"  🔍 DEBUG: Found {len(paragraphs)} paragraphs")
+                print(f"  🔍 DEBUG: Found {len(paragraphs)} paragraphs and {len(content_divs)} divs")
                 for i, p in enumerate(paragraphs):
                     text = p.get_text(strip=True)
                     print(f"  🔍 DEBUG: Paragraph {i}: {text[:100]}")
+                for i, d in enumerate(content_divs):
+                    text = d.get_text(strip=True)
+                    if text:  # Only show non-empty divs
+                        print(f"  🔍 DEBUG: Div {i}: {text[:100]}")
 
-            if not paragraphs:
+            # Collect all text parts, skipping metadata and style tags
+            description_parts = []
+
+            # Process paragraphs (skip first one if it's metadata, and style-only paragraphs)
+            for i, p in enumerate(paragraphs):
+                text = p.get_text(strip=True)
+
+                # Skip metadata (first paragraph with % and ml)
+                if i == 0 and re.search(r'\d+\.?\d*\s*%.*\d+\s*ml', text, re.IGNORECASE):
+                    continue
+
+                # Skip style-only paragraphs (HOUBLONNÉE, BLONDE, etc.)
+                if re.match(r'^(NOIRE|BLONDE|ROUSSE|BLANCHE|HOUBLONNÉE|SOIF|SÛRE|COMPLEXE)$', text, re.IGNORECASE):
+                    continue
+
+                # Skip very short text
+                if len(text) > 20:
+                    description_parts.append(text)
+
+            # Process content divs (these often contain the actual description)
+            for div in content_divs:
+                text = div.get_text(strip=True)
+                if text and len(text) > 20:
+                    description_parts.append(text)
+
+            if not description_parts:
                 if self.debug:
-                    print(f"  🔍 DEBUG: No paragraphs found")
+                    print(f"  🔍 DEBUG: No description parts found")
                 return None
 
-            # Handle different structures flexibly
-            # If only 1 paragraph: might be just the description
-            # If 2 paragraphs: might be metadata + description
-            # If 3+ paragraphs: metadata + style + description (standard)
-
-            if len(paragraphs) == 1:
-                # Single paragraph - could be description or metadata
-                text = paragraphs[0].get_text(strip=True)
-                # Check if it's just metadata (contains % and ml)
-                if re.search(r'\d+\.?\d*\s*%.*\d+\s*ml', text, re.IGNORECASE):
-                    if self.debug:
-                        print(f"  🔍 DEBUG: Single paragraph is just metadata")
-                    return None
-                return text.strip() if text else None
-
-            elif len(paragraphs) == 2:
-                # Two paragraphs - take the second one (skip metadata)
-                text = paragraphs[1].get_text(strip=True)
-                return text.strip() if text else None
-
-            else:
-                # 3+ paragraphs - standard structure: skip first 2 (metadata + style)
-                description_parts = []
-                for p in paragraphs[2:]:
-                    text = p.get_text(strip=True)
-                    if text:
-                        description_parts.append(text)
-
-                description = ' '.join(description_parts)
-                return description.strip() if description else None
+            description = ' '.join(description_parts)
+            return description.strip() if description else None
 
         except Exception as e:
             print(f"  ⚠️  Error fetching {url}: {e}")
