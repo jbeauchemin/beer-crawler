@@ -125,7 +125,8 @@ class BeaudegatDescriptionFetcher:
                 if self.debug:
                     print(f"  🔍 DEBUG: Extracted direct text after cleanup: {full_text[:100]}")
 
-                if len(full_text) > 20:
+                # Accept descriptions that are at least 10 characters (some beers have short descriptions)
+                if len(full_text) >= 10:
                     description_parts.append(full_text)
 
             if not description_parts:
