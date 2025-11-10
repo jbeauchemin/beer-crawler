@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-Parallel beer classification with retry logic and Prisma-ready output.
+Parallel beer classification with OpenRouter API and Prisma-ready output.
+
+Uses OpenRouter.ai to access multiple LLM providers (OpenAI, Anthropic, etc.)
+for high-quality, reliable beer classification with retry logic.
 
 Output Format: Prisma-ready JSON with the following structure:
 {
@@ -11,7 +14,7 @@ Output Format: Prisma-ready JSON with the following structure:
   "rating": "4.2",
   "numRatings": 1234,
   "alcoholStrength": "MEDIUM",  // Calculated from ABV in Python (100% accurate)
-  "bitternessLevel": "HIGH",    // Calculated from IBU in Python (100% accurate)
+  "bitternessLevel": "HIGH",    // Calculated from IBU or inferred from style
   "descriptionFr": "...",
   "descriptionEn": "...",
   "style": {"code": "IPA", "name": "IPA"},
@@ -21,19 +24,33 @@ Output Format: Prisma-ready JSON with the following structure:
 }
 
 Features:
+- OpenRouter API for reliable, high-quality LLM access
 - Parallel processing with configurable workers (2-3 recommended)
-- Retry failed classifications up to 3 times
+- Retry failed classifications up to 5 times (greatly reduced failure rate)
+- Smart bitterness inference from beer style when IBU is missing
 - Progress tracking (resume from where you left off with --resume)
 - Saves after EVERY beer (can interrupt with Ctrl+C safely)
 - Thread-safe incremental saving
 - alcoholStrength & bitternessLevel calculated in Python (not LLM) for 100% accuracy
 - Graceful shutdown on Ctrl+C
 
-Recommended: Use 2 workers on M2 32GB for 2x speed improvement
+Recommended models:
+- openai/gpt-4o-mini: Best value (~$0.20/1000 beers) ⭐
+- openai/gpt-4o: Best quality (~$2.50/1000 beers)
+- anthropic/claude-3.5-sonnet: Most creative (~$3.75/1000 beers)
+
+Setup:
+    1. Install dependencies: pip install openai
+    2. Get API key: https://openrouter.ai/keys
+    3. Set environment variable: export OPENROUTER_API_KEY=your_key_here
 
 Usage:
-    # First run
+    # First run with GPT-4o mini (recommended)
+    export OPENROUTER_API_KEY=your_key_here
     python classify_beers_parallel.py input.json output.json --workers 2
+
+    # Use GPT-4o for best quality
+    python classify_beers_parallel.py input.json output.json --model openai/gpt-4o --workers 2
 
     # Resume after interruption (Ctrl+C or crash)
     python classify_beers_parallel.py input.json output.json --workers 2 --resume
@@ -44,11 +61,18 @@ import sys
 import time
 import threading
 import signal
+import os
 from pathlib import Path
 from typing import Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import requests
 from tqdm import tqdm
+
+try:
+    from openai import OpenAI
+except ImportError:
+    print("❌ Error: openai package not installed")
+    print("Please run: pip install openai")
+    sys.exit(1)
 
 
 # Classification schema
@@ -237,26 +261,31 @@ Respond with ONLY valid JSON:
     return prompt
 
 
-def call_ollama(prompt: str, model: str = "mixtral:latest", temperature: float = 0.8) -> Optional[Dict]:
-    """Call Ollama API to get classification."""
+def call_openrouter(prompt: str, model: str = "openai/gpt-4o-mini", temperature: float = 0.8, api_key: str = None) -> Optional[Dict]:
+    """Call OpenRouter API to get classification.
+
+    Args:
+        prompt: The classification prompt
+        model: Model to use (e.g., "openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet")
+        temperature: Sampling temperature
+        api_key: OpenRouter API key
+    """
     try:
-        response = requests.post(
-            'http://localhost:11434/api/generate',
-            json={
-                'model': model,
-                'prompt': prompt,
-                'stream': False,
-                'temperature': temperature,
-                'format': 'json',
-            },
-            timeout=120
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=api_key or os.environ.get("OPENROUTER_API_KEY")
         )
 
-        if response.status_code != 200:
-            return None
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+            temperature=temperature,
+            response_format={"type": "json_object"}
+        )
 
-        result = response.json()
-        response_text = result.get('response', '').strip()
+        response_text = response.choices[0].message.content.strip()
 
         try:
             classification = json.loads(response_text)
@@ -264,7 +293,8 @@ def call_ollama(prompt: str, model: str = "mixtral:latest", temperature: float =
         except json.JSONDecodeError:
             return None
 
-    except requests.exceptions.RequestException:
+    except Exception as e:
+        print(f"  ❌ API error: {e}")
         return None
 
 
@@ -294,11 +324,28 @@ def validate_classification(classification: Dict) -> bool:
     return True
 
 
-def classify_beer_with_retry(beer: Dict, model: str = "mixtral:latest", max_retries: int = 3) -> Optional[Dict]:
+def infer_bitterness_from_style(style_code: str) -> str:
+    """Infer typical bitterness level from beer style when IBU is not available."""
+    style_to_bitterness = {
+        'IPA': 'HIGH',
+        'PALE_ALE': 'MEDIUM',
+        'STOUT_PORTER': 'MEDIUM',
+        'BLONDE_GOLDEN': 'LOW',
+        'WHEAT_WITBIER': 'LOW',
+        'SOUR_TART': 'LOW',
+        'CIDER': 'LOW',
+        'LAGER_PILSNER': 'MEDIUM',
+        'SAISON_FARMHOUSE': 'MEDIUM',
+        'RED_AMBER': 'MEDIUM',
+    }
+    return style_to_bitterness.get(style_code, 'MEDIUM')
+
+
+def classify_beer_with_retry(beer: Dict, model: str = "openai/gpt-4o-mini", api_key: str = None, max_retries: int = 5) -> Optional[Dict]:
     """Classify a beer with retry logic."""
     for attempt in range(max_retries):
         prompt = build_classification_prompt(beer)
-        classification = call_ollama(prompt, model)
+        classification = call_openrouter(prompt, model, api_key=api_key)
 
         if classification and validate_classification(classification):
             # IMPORTANT: Override LLM calculations with Python calculations when data exists
@@ -311,10 +358,15 @@ def classify_beer_with_retry(beer: Dict, model: str = "mixtral:latest", max_retr
                 classification['alcohol_strength'] = calculated_strength
 
             # 2. Calculate bitterness_level from untappd_ibu if available
+            #    If not available, infer from style_code
             ibu = beer.get('untappd_ibu') or beer.get('ibu_normalized')
             if ibu is not None:
                 calculated_bitterness = calculate_bitterness_level(ibu)
                 classification['bitterness_level'] = calculated_bitterness
+            elif 'style_code' in classification:
+                # Infer from style when IBU is missing
+                inferred_bitterness = infer_bitterness_from_style(classification['style_code'])
+                classification['bitterness_level'] = inferred_bitterness
 
             return classification
 
@@ -423,11 +475,11 @@ class ThreadSafeProgress:
 
 def process_beer(args):
     """Process a single beer (used by thread pool)."""
-    index, beer, model = args
+    index, beer, model, api_key = args
     beer_name = beer.get('name', 'Unknown')
 
-    # Classify with retry
-    classification = classify_beer_with_retry(beer, model, max_retries=3)
+    # Classify with retry (5 attempts)
+    classification = classify_beer_with_retry(beer, model, api_key=api_key, max_retries=5)
 
     # Format for Prisma (includes calculated alcohol_strength and bitterness_level)
     prisma_beer = format_for_prisma(beer, classification)
@@ -467,13 +519,20 @@ def main():
     if len(sys.argv) < 3:
         print("Usage: python classify_beers_parallel.py <input.json> <output.json> [OPTIONS]")
         print("\nOptions:")
-        print("  --model MODEL    Ollama model to use (default: mixtral:latest)")
-        print("  --workers N      Number of parallel workers (default: 2, max recommended: 3)")
-        print("  --limit N        Only process first N beers (for testing)")
-        print("  --resume         Resume from last checkpoint")
+        print("  --model MODEL      OpenRouter model (default: openai/gpt-4o-mini)")
+        print("                     Examples: openai/gpt-4o, anthropic/claude-3.5-sonnet")
+        print("  --api-key KEY      OpenRouter API key (or set OPENROUTER_API_KEY env var)")
+        print("  --workers N        Number of parallel workers (default: 2)")
+        print("  --limit N          Only process first N beers (for testing)")
+        print("  --resume           Resume from last checkpoint")
+        print("\nRecommended models:")
+        print("  openai/gpt-4o-mini          - Best value ($0.20/1000 beers) ⭐")
+        print("  openai/gpt-4o               - Best quality ($2.50/1000 beers)")
+        print("  anthropic/claude-3.5-sonnet - Most creative ($3.75/1000 beers)")
         print("\nExample:")
+        print("  export OPENROUTER_API_KEY=your_key_here")
         print("  python classify_beers_parallel.py beers_cleaned.json beers_prisma.json --workers 2")
-        print("  python classify_beers_parallel.py beers_cleaned.json beers_prisma.json --workers 3")
+        print("  python classify_beers_parallel.py beers_cleaned.json beers_prisma.json --model openai/gpt-4o --workers 3")
         sys.exit(1)
 
     input_file = Path(sys.argv[1])
@@ -484,14 +543,17 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
 
     # Parse arguments
-    model = "mixtral:latest"
-    workers = 2  # Default: safe for M2 32GB
+    model = "openai/gpt-4o-mini"
+    api_key = None
+    workers = 2
     limit = None
     resume = False
 
     for i, arg in enumerate(sys.argv):
         if arg == "--model" and i + 1 < len(sys.argv):
             model = sys.argv[i + 1]
+        elif arg == "--api-key" and i + 1 < len(sys.argv):
+            api_key = sys.argv[i + 1]
         elif arg == "--workers" and i + 1 < len(sys.argv):
             workers = int(sys.argv[i + 1])
         elif arg == "--limit" and i + 1 < len(sys.argv):
@@ -499,15 +561,28 @@ def main():
         elif arg == "--resume":
             resume = True
 
+    # Check API key
+    if not api_key:
+        api_key = os.environ.get("OPENROUTER_API_KEY")
+
+    if not api_key:
+        print("❌ Error: OpenRouter API key not found")
+        print("Please either:")
+        print("  1. Set environment variable: export OPENROUTER_API_KEY=your_key_here")
+        print("  2. Pass as argument: --api-key your_key_here")
+        print("\nGet your API key at: https://openrouter.ai/keys")
+        sys.exit(1)
+
     if not input_file.exists():
         print(f"❌ Error: Input file '{input_file}' not found")
         sys.exit(1)
 
-    print(f"🍺 Parallel Beer Classification")
+    print(f"🍺 Parallel Beer Classification with OpenRouter")
     print(f"📖 Input: {input_file}")
     print(f"💾 Output: {output_file}")
     print(f"🤖 Model: {model}")
     print(f"⚡ Workers: {workers}")
+    print(f"🔄 Max retries: 5")
     print()
 
     # Load beers
@@ -542,16 +617,6 @@ def main():
     print(f"✅ Loaded {len(beers)} beers to process")
     print()
 
-    # Check Ollama
-    try:
-        response = requests.get('http://localhost:11434/api/tags', timeout=5)
-        if response.status_code != 200:
-            print("❌ Error: Ollama is not responding. Make sure 'ollama serve' is running.")
-            sys.exit(1)
-    except requests.exceptions.RequestException:
-        print("❌ Error: Cannot connect to Ollama. Make sure 'ollama serve' is running.")
-        sys.exit(1)
-
     # Thread-safe progress
     progress = ThreadSafeProgress()
 
@@ -574,8 +639,8 @@ def main():
     print(f"⚠️  Safe to interrupt: Press Ctrl+C anytime, use --resume to continue")
     print()
 
-    # Prepare work items
-    work_items = [(i, beer, model) for i, beer in enumerate(beers)]
+    # Prepare work items (include API key)
+    work_items = [(i, beer, model, api_key) for i, beer in enumerate(beers)]
 
     # Process with thread pool
     with ThreadPoolExecutor(max_workers=workers) as executor:
