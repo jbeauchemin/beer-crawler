@@ -394,9 +394,17 @@ def format_for_prisma(beer: Dict, classification: Optional[Dict]) -> Dict:
     # Calculate alcohol_strength from ABV (not from LLM for 100% accuracy)
     alcohol_strength = calculate_alcohol_strength(abv_value)
 
-    # Calculate bitterness_level from IBU (not from LLM for 100% accuracy)
+    # Calculate bitterness_level from IBU OR infer from style
     ibu_value = beer.get('untappd_ibu') or beer.get('ibu_normalized')
-    bitterness_level = calculate_bitterness_level(ibu_value)
+    if ibu_value is not None:
+        # We have IBU data - calculate from it
+        bitterness_level = calculate_bitterness_level(ibu_value)
+    elif classification and 'style_code' in classification:
+        # No IBU but we have style - infer from style
+        bitterness_level = infer_bitterness_from_style(classification['style_code'])
+    else:
+        # No IBU, no style - default to MEDIUM
+        bitterness_level = "MEDIUM"
 
     # Get rating info
     num_ratings = beer.get('untappd_rating_count', 0)
