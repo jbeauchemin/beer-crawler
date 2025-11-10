@@ -117,8 +117,8 @@ def calculate_alcohol_strength(abv: Optional[float]) -> str:
 
     Thresholds:
     - ALCOHOL_FREE: 0-0.5%
-    - LIGHT: 0.5-4.5%
-    - MEDIUM: 4.5-7.0%
+    - LIGHT: 0.5-5.0%
+    - MEDIUM: 5.0-7.0%
     - STRONG: >7.0%
     """
     if abv is None:
@@ -126,12 +126,33 @@ def calculate_alcohol_strength(abv: Optional[float]) -> str:
 
     if abv < 0.5:
         return "ALCOHOL_FREE"
-    elif abv < 4.5:
+    elif abv < 5.0:
         return "LIGHT"
-    elif abv <= 7.0:
+    elif abv < 7.0:
         return "MEDIUM"
     else:
         return "STRONG"
+
+
+def calculate_bitterness_level(ibu: Optional[float]) -> str:
+    """Calculate bitterness level based on IBU thresholds.
+
+    This is done in Python instead of by the LLM for 100% accuracy.
+
+    Thresholds:
+    - LOW: 0-20 IBU
+    - MEDIUM: 20-40 IBU
+    - HIGH: 40+ IBU
+    """
+    if ibu is None:
+        return "MEDIUM"  # Default for unknown IBU
+
+    if ibu < 20:
+        return "LOW"
+    elif ibu < 40:
+        return "MEDIUM"
+    else:
+        return "HIGH"
 
 
 def build_classification_prompt(beer: Dict) -> str:
@@ -277,6 +298,21 @@ def classify_beer_with_retry(beer: Dict, model: str = "mixtral:latest", max_retr
         classification = call_ollama(prompt, model)
 
         if classification and validate_classification(classification):
+            # IMPORTANT: Override LLM calculations with Python calculations when data exists
+            # This ensures 100% accuracy for alcohol_strength and bitterness_level
+
+            # 1. Calculate alcohol_strength from abv_normalized if available
+            abv = extract_abv(beer)
+            if abv is not None:
+                calculated_strength = calculate_alcohol_strength(abv)
+                classification['alcohol_strength'] = calculated_strength
+
+            # 2. Calculate bitterness_level from untappd_ibu if available
+            ibu = beer.get('untappd_ibu') or beer.get('ibu_normalized')
+            if ibu is not None:
+                calculated_bitterness = calculate_bitterness_level(ibu)
+                classification['bitterness_level'] = calculated_bitterness
+
             return classification
 
         if attempt < max_retries - 1:
