@@ -95,10 +95,20 @@ FLAVOR_NAMES = {
 
 
 def extract_abv(beer: Dict) -> Optional[float]:
-    """Extract ABV from beer data."""
+    """Extract ABV from beer data, trying multiple sources."""
+    import re
+
     # Try abv_normalized first (preferred)
     if beer.get('abv_normalized'):
         return float(beer['abv_normalized'])
+
+    # Try 'alcohol' field (e.g., "9.8%" or "6.5%")
+    if 'alcohol' in beer:
+        alcohol = beer['alcohol']
+        if isinstance(alcohol, str):
+            match = re.search(r'(\d+\.?\d*)\s*%', alcohol)
+            if match:
+                return float(match.group(1))
 
     return None
 
@@ -357,25 +367,22 @@ def format_for_prisma(beer: Dict, classification: Optional[Dict]) -> Dict:
         "rawData": beer,
         # Always include these (calculated from actual data)
         "alcoholStrength": alcohol_strength,
-        "bitternessLevel": bitterness_level
+        "bitternessLevel": bitterness_level,
+        # Classification fields (null if LLM failed)
+        "descriptionFr": classification['description_fr'] if classification else None,
+        "descriptionEn": classification['description_en'] if classification else None,
+        "style": {
+            "code": classification['style_code'],
+            "name": STYLE_NAMES[classification['style_code']]
+        } if classification else None,
+        "flavors": [
+            {
+                "code": flavor_code,
+                "name": FLAVOR_NAMES[flavor_code]
+            }
+            for flavor_code in classification['flavors']
+        ] if classification else None
     }
-
-    if classification:
-        prisma_beer.update({
-            "descriptionFr": classification['description_fr'],
-            "descriptionEn": classification['description_en'],
-            "style": {
-                "code": classification['style_code'],
-                "name": STYLE_NAMES[classification['style_code']]
-            },
-            "flavors": [
-                {
-                    "code": flavor_code,
-                    "name": FLAVOR_NAMES[flavor_code]
-                }
-                for flavor_code in classification['flavors']
-            ]
-        })
 
     return prisma_beer
 
