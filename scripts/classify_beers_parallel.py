@@ -342,32 +342,16 @@ def infer_bitterness_from_style(style_code: str) -> str:
 
 
 def classify_beer_with_retry(beer: Dict, model: str = "openai/gpt-4o-mini", api_key: str = None, max_retries: int = 5) -> Optional[Dict]:
-    """Classify a beer with retry logic."""
+    """Call LLM to classify beer (style, flavors, descriptions only).
+
+    Returns raw LLM classification or None if all retries failed.
+    Does NOT calculate alcohol_strength or bitterness_level - that's done in format_for_prisma().
+    """
     for attempt in range(max_retries):
         prompt = build_classification_prompt(beer)
         classification = call_openrouter(prompt, model, api_key=api_key)
 
         if classification and validate_classification(classification):
-            # IMPORTANT: Override LLM calculations with Python calculations when data exists
-            # This ensures 100% accuracy for alcohol_strength and bitterness_level
-
-            # 1. Calculate alcohol_strength from abv_normalized if available
-            abv = extract_abv(beer)
-            if abv is not None:
-                calculated_strength = calculate_alcohol_strength(abv)
-                classification['alcohol_strength'] = calculated_strength
-
-            # 2. Calculate bitterness_level from untappd_ibu if available
-            #    If not available, infer from style_code
-            ibu = beer.get('untappd_ibu') or beer.get('ibu_normalized')
-            if ibu is not None:
-                calculated_bitterness = calculate_bitterness_level(ibu)
-                classification['bitterness_level'] = calculated_bitterness
-            elif 'style_code' in classification:
-                # Infer from style when IBU is missing
-                inferred_bitterness = infer_bitterness_from_style(classification['style_code'])
-                classification['bitterness_level'] = inferred_bitterness
-
             return classification
 
         if attempt < max_retries - 1:
@@ -387,23 +371,24 @@ def get_first_image(photo_urls: Dict) -> Optional[str]:
 
 
 def format_for_prisma(beer: Dict, classification: Optional[Dict]) -> Dict:
-    """Format beer data for Prisma schema."""
-    # Extract ABV from multiple sources
-    abv_value = extract_abv(beer)
+    """Format beer data for Prisma schema.
 
-    # Calculate alcohol_strength from ABV (not from LLM for 100% accuracy)
+    This function does ALL Python calculations:
+    - alcoholStrength: Calculated from ABV (100% accurate)
+    - bitternessLevel: Calculated from IBU, or inferred from style if IBU missing
+    - All other fields: Formatted for Prisma schema
+    """
+    # Calculate alcoholStrength from ABV (Python calculation, not LLM)
+    abv_value = extract_abv(beer)
     alcohol_strength = calculate_alcohol_strength(abv_value)
 
-    # Calculate bitterness_level from IBU OR infer from style
+    # Calculate bitternessLevel: IBU first, then infer from style, then default
     ibu_value = beer.get('untappd_ibu') or beer.get('ibu_normalized')
     if ibu_value is not None:
-        # We have IBU data - calculate from it
         bitterness_level = calculate_bitterness_level(ibu_value)
     elif classification and 'style_code' in classification:
-        # No IBU but we have style - infer from style
         bitterness_level = infer_bitterness_from_style(classification['style_code'])
     else:
-        # No IBU, no style - default to MEDIUM
         bitterness_level = "MEDIUM"
 
     # Get rating info
