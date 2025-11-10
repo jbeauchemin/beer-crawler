@@ -10,6 +10,15 @@ Generates:
 - description_fr: Fun, friendly, casual French description (2-3 sentences)
 - description_en: Fun, friendly, casual English description (2-3 sentences)
 
+IMPORTANT: Data Integrity Protection
+====================================
+The script ALWAYS preserves original data values:
+1. If abv_normalized exists → alcohol_strength is calculated in Python (100% accurate)
+2. If untappd_ibu exists → bitterness_level is calculated in Python (100% accurate)
+3. Original abv_normalized and untappd_ibu values are NEVER modified by the LLM
+
+This ensures the LLM cannot override factual numerical data with incorrect guesses.
+
 Note: Descriptions are written in an exciting, approachable tone - like recommending
 beer to a friend at a bar, not formal beer reviews!
 """
@@ -52,6 +61,43 @@ FLAVOR_CODES = [
 
 BITTERNESS_LEVELS = ['LOW', 'MEDIUM', 'HIGH']
 ALCOHOL_STRENGTHS = ['ALCOHOL_FREE', 'LIGHT', 'MEDIUM', 'STRONG']
+
+
+def calculate_alcohol_strength(abv: float) -> str:
+    """
+    Calculate alcohol strength based on ABV.
+
+    Rules:
+    - ALCOHOL_FREE: 0-0.5%
+    - LIGHT: 0.5-5%
+    - MEDIUM: 5-7%
+    - STRONG: 7-15%
+    """
+    if abv < 0.5:
+        return 'ALCOHOL_FREE'
+    elif abv < 5.0:
+        return 'LIGHT'
+    elif abv < 7.0:
+        return 'MEDIUM'
+    else:
+        return 'STRONG'
+
+
+def calculate_bitterness_level(ibu: float) -> str:
+    """
+    Calculate bitterness level based on IBU.
+
+    Rules:
+    - LOW: 0-20 IBU
+    - MEDIUM: 20-40 IBU
+    - HIGH: 40+ IBU
+    """
+    if ibu < 20:
+        return 'LOW'
+    elif ibu < 40:
+        return 'MEDIUM'
+    else:
+        return 'HIGH'
 
 
 def build_classification_prompt(beer: Dict) -> str:
@@ -231,6 +277,27 @@ def classify_beer(beer: Dict, model: str = "mixtral:latest") -> Optional[Dict]:
     classification = call_ollama(prompt, model)
 
     if classification and validate_classification(classification):
+        # IMPORTANT: Override LLM calculations with Python calculations when data exists
+        # This ensures 100% accuracy for alcohol_strength and bitterness_level
+
+        # 1. Calculate alcohol_strength from abv_normalized if available
+        abv = beer.get('abv_normalized')
+        if abv is not None:
+            calculated_strength = calculate_alcohol_strength(abv)
+            if classification['alcohol_strength'] != calculated_strength:
+                print(f"  ⚠️  Overriding LLM alcohol_strength ({classification['alcohol_strength']}) "
+                      f"with Python calculation ({calculated_strength}) based on ABV={abv}%")
+            classification['alcohol_strength'] = calculated_strength
+
+        # 2. Calculate bitterness_level from untappd_ibu if available
+        ibu = beer.get('untappd_ibu')
+        if ibu is not None:
+            calculated_bitterness = calculate_bitterness_level(ibu)
+            if classification['bitterness_level'] != calculated_bitterness:
+                print(f"  ⚠️  Overriding LLM bitterness_level ({classification['bitterness_level']}) "
+                      f"with Python calculation ({calculated_bitterness}) based on IBU={ibu}")
+            classification['bitterness_level'] = calculated_bitterness
+
         return classification
 
     return None
@@ -305,6 +372,14 @@ def main():
         if classification:
             # Merge classification with original beer data
             classified_beer = {**beer, **classification}
+
+            # CRITICAL: Ensure original ABV and IBU values are ALWAYS preserved
+            # (in case LLM somehow returned these fields)
+            if 'abv_normalized' in beer:
+                classified_beer['abv_normalized'] = beer['abv_normalized']
+            if 'untappd_ibu' in beer:
+                classified_beer['untappd_ibu'] = beer['untappd_ibu']
+
             classified_beers.append(classified_beer)
         else:
             failed_beers.append({
