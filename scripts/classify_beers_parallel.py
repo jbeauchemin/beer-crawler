@@ -1,10 +1,24 @@
 #!/usr/bin/env python3
 """
-Parallel beer classification with retry logic.
+Parallel beer classification with retry logic and Prisma-ready output.
 
-IMPORTANT: This script produces EXACTLY THE SAME JSON format as classify_beers_llm.py
-- It merges classification with original beer data: {**beer, **classification}
-- It preserves all original fields (abv_normalized, untappd_ibu, etc.)
+Output Format: Prisma-ready JSON with the following structure:
+{
+  "codeBar": "...",
+  "productName": "...",
+  "abv": "6.50",
+  "ibu": "45.00",
+  "rating": "4.2",
+  "numRatings": 1234,
+  "alcoholStrength": "MEDIUM",  // Calculated from ABV in Python (100% accurate)
+  "bitternessLevel": "HIGH",    // Calculated from IBU in Python (100% accurate)
+  "descriptionFr": "...",
+  "descriptionEn": "...",
+  "style": {"code": "IPA", "name": "IPA"},
+  "flavors": [{"code": "HOPPY_BITTER", "name": "Hoppy / Bitter"}, ...],
+  "producer": {"name": "..."},
+  "rawData": {...}  // All original beer data
+}
 
 Features:
 - Parallel processing with configurable workers (2-3 recommended)
@@ -12,7 +26,7 @@ Features:
 - Progress tracking (resume from where you left off with --resume)
 - Saves after EVERY beer (can interrupt with Ctrl+C safely)
 - Thread-safe incremental saving
-- Same quality and format as sequential version
+- alcoholStrength & bitternessLevel calculated in Python (not LLM) for 100% accuracy
 - Graceful shutdown on Ctrl+C
 
 Recommended: Use 2 workers on M2 32GB for 2x speed improvement
@@ -51,6 +65,33 @@ FLAVOR_CODES = [
 
 BITTERNESS_LEVELS = ['LOW', 'MEDIUM', 'HIGH']
 ALCOHOL_STRENGTHS = ['ALCOHOL_FREE', 'LIGHT', 'MEDIUM', 'STRONG']
+
+# Mapping codes to names (for Prisma)
+STYLE_NAMES = {
+    'BLONDE_GOLDEN': 'Blonde / Golden Ale',
+    'WHEAT_WITBIER': 'Wheat Beer / Witbier',
+    'IPA': 'IPA',
+    'PALE_ALE': 'Pale Ale',
+    'RED_AMBER': 'Red Ale / Amber',
+    'LAGER_PILSNER': 'Lager / Pilsner',
+    'SAISON_FARMHOUSE': 'Saison / Farmhouse Ale',
+    'SOUR_TART': 'Sour / Tart Beer',
+    'STOUT_PORTER': 'Stout / Porter',
+    'CIDER': 'Cider',
+}
+
+FLAVOR_NAMES = {
+    'HOPPY_BITTER': 'Hoppy / Bitter',
+    'CITRUS_TROPICAL': 'Citrus / Tropical',
+    'MALTY_GRAINY': 'Malty / Grainy',
+    'CARAMEL_TOFFEE_SWEET': 'Caramel / Toffee / Sweet',
+    'CHOCOLATE_COFFEE': 'Chocolate / Coffee',
+    'RED_FRUITS_BERRIES': 'Red Fruits / Berries',
+    'ORCHARD_FRUITS': 'Peach, Pear & Orchard Fruits',
+    'SPICY_HERBAL': 'Spicy / Herbal',
+    'WOODY_SMOKY': 'Woody / Smoky',
+    'SOUR_TART_FUNKY': 'Sour / Tart / Funky',
+}
 
 
 def extract_abv(beer: Dict) -> Optional[float]:
@@ -273,6 +314,72 @@ def classify_beer_with_retry(beer: Dict, model: str = "mixtral:latest", max_retr
     return None
 
 
+def get_first_image(photo_urls: Dict) -> Optional[str]:
+    """Get first available image URL."""
+    if not photo_urls:
+        return None
+    for url in photo_urls.values():
+        if url:
+            return url
+    return None
+
+
+def format_for_prisma(beer: Dict, classification: Optional[Dict]) -> Dict:
+    """Format beer data for Prisma schema."""
+    # Extract ABV from multiple sources
+    abv_value = extract_abv(beer)
+
+    # Calculate alcohol_strength from ABV (not from LLM for 100% accuracy)
+    alcohol_strength = calculate_alcohol_strength(abv_value)
+
+    # Calculate bitterness_level from IBU (not from LLM for 100% accuracy)
+    ibu_value = beer.get('untappd_ibu') or beer.get('ibu_normalized')
+    bitterness_level = calculate_bitterness_level(ibu_value)
+
+    # Get rating info
+    num_ratings = beer.get('untappd_rating_count', 0)
+    rating = beer.get('untappd_rating', 0)
+
+    # Only include rating if there are actual ratings (numRatings > 0)
+    rating_str = str(rating) if num_ratings > 0 else None
+
+    prisma_beer = {
+        "codeBar": beer.get('upc') or None,
+        "productName": beer.get('name'),
+        "abv": str(abv_value) if abv_value else None,
+        "ibu": str(ibu_value) if ibu_value else None,
+        "rating": rating_str,
+        "numRatings": num_ratings,
+        "imageUrl": get_first_image(beer.get('photo_urls', {})),
+        "producer": {
+            "name": beer.get('producer')
+        },
+        "rawData": beer,
+        # Always include these (calculated from actual data)
+        "alcoholStrength": alcohol_strength,
+        "bitternessLevel": bitterness_level
+    }
+
+    if classification:
+        prisma_beer.update({
+            "descriptionFr": classification['description_fr'],
+            "descriptionEn": classification['description_en'],
+            "style": {
+                "code": classification['style_code'],
+                "name": STYLE_NAMES[classification['style_code']]
+            },
+            "flavors": [
+                {
+                    "code": flavor_code,
+                    "name": FLAVOR_NAMES[flavor_code]
+                }
+                for flavor_code in classification['flavors']
+            ]
+        })
+
+    return prisma_beer
+
+
 class ThreadSafeProgress:
     """Thread-safe progress tracking."""
     def __init__(self):
@@ -315,23 +422,12 @@ def process_beer(args):
     # Classify with retry
     classification = classify_beer_with_retry(beer, model, max_retries=3)
 
-    # Merge classification with original beer data (SAME AS classify_beers_llm.py)
-    if classification:
-        classified_beer = {**beer, **classification}
-
-        # CRITICAL: Ensure original ABV and IBU values are ALWAYS preserved
-        # (in case LLM somehow returned these fields)
-        if 'abv_normalized' in beer:
-            classified_beer['abv_normalized'] = beer['abv_normalized']
-        if 'untappd_ibu' in beer:
-            classified_beer['untappd_ibu'] = beer['untappd_ibu']
-    else:
-        # Still add the beer but without classification
-        classified_beer = beer
+    # Format for Prisma (includes calculated alcohol_strength and bitterness_level)
+    prisma_beer = format_for_prisma(beer, classification)
 
     return {
         'index': index,
-        'beer': classified_beer,
+        'beer': prisma_beer,
         'classification': classification,
         'name': beer_name,
         'producer': beer.get('producer'),
@@ -369,8 +465,8 @@ def main():
         print("  --limit N        Only process first N beers (for testing)")
         print("  --resume         Resume from last checkpoint")
         print("\nExample:")
-        print("  python classify_beers_parallel.py beers_cleaned.json beers_classified.json --workers 2")
-        print("  python classify_beers_parallel.py beers_cleaned.json beers_classified.json --workers 3")
+        print("  python classify_beers_parallel.py beers_cleaned.json beers_prisma.json --workers 2")
+        print("  python classify_beers_parallel.py beers_cleaned.json beers_prisma.json --workers 3")
         sys.exit(1)
 
     input_file = Path(sys.argv[1])
@@ -524,7 +620,7 @@ def main():
     print(f"   Failed: {len(failed)}")
     print(f"   Workers used: {workers}")
     print()
-    print(f"📄 Output saved to: {output_file}")
+    print(f"📄 Prisma-ready output: {output_file}")
 
 
 if __name__ == "__main__":
