@@ -123,8 +123,11 @@ def extract_abv(beer: Dict) -> Optional[float]:
     import re
 
     # Try abv_normalized first (preferred)
-    if beer.get('abv_normalized'):
-        return float(beer['abv_normalized'])
+    if beer.get('abv_normalized') is not None:
+        try:
+            return float(beer['abv_normalized'])
+        except (TypeError, ValueError):
+            pass
 
     # Try 'alcohol' field (e.g., "9.8%" or "6.5%")
     if 'alcohol' in beer:
@@ -132,7 +135,10 @@ def extract_abv(beer: Dict) -> Optional[float]:
         if isinstance(alcohol, str):
             match = re.search(r'(\d+\.?\d*)\s*%', alcohol)
             if match:
-                return float(match.group(1))
+                try:
+                    return float(match.group(1))
+                except ValueError:
+                    pass
 
     return None
 
@@ -174,102 +180,228 @@ def calculate_bitterness_level(ibu: Optional[float]) -> str:
     if ibu is None:
         return "MEDIUM"  # Default for unknown IBU
 
-    if ibu < 20:
+    try:
+        ibu_val = float(ibu)
+    except (TypeError, ValueError):
+        return "MEDIUM"
+
+    if ibu_val < 20:
         return "LOW"
-    elif ibu < 40:
+    elif ibu_val < 40:
         return "MEDIUM"
     else:
         return "HIGH"
 
 
 def build_classification_prompt(beer: Dict) -> str:
-    """Build the prompt for LLM classification."""
+    """Build the prompt for LLM classification (style, flavors, bitterness, descriptions)."""
+    import json as _json
+
     name = beer.get('name', 'Unknown')
     producer = beer.get('producer', 'Unknown')
     abv = extract_abv(beer)
-    ibu = beer.get('ibu_normalized')
+    ibu = beer.get('ibu_normalized') or beer.get('untappd_ibu')
 
-    descriptions = beer.get('descriptions', {})
-    desc_text = "\n".join([f"- {source}: {desc}" for source, desc in descriptions.items()])
+    raw_json = _json.dumps(beer, ensure_ascii=False, indent=2)
 
-    styles = beer.get('styles', {})
-    styles_text = ", ".join([f"{source}: {style}" for source, style in styles.items()])
+    prompt = f"""You are a BEER CLASSIFICATION ENGINE.
 
-    sub_styles = beer.get('sub_styles', {})
-    sub_styles_text = ", ".join([f"{source}: {style}" for source, style in sub_styles.items()])
+Your job:
+- Read the raw beer data.
+- Infer the best style_code, flavor codes, and bitterness_level.
+- Write fun, friendly descriptions in French and English.
+- Follow ALL rules strictly.
 
-    prompt = f"""You are a passionate beer sommelier with a fun, casual vibe. Analyze this beer and provide classification + awesome descriptions!
-
-🍺 BEER INFO:
+====================
+RAW BEER DATA
+====================
 Name: {name}
 Producer: {producer}
-ABV: {abv}% (alcohol by volume)
-IBU: {ibu if ibu else 'Unknown'}
+ABV: {abv if abv is not None else "Unknown"} % (alcohol by volume)
+IBU: {ibu if ibu is not None else "Unknown"}
 
-Styles mentioned:
-{styles_text if styles_text else 'None'}
+Full JSON:
+{raw_json}
 
-Sub-styles:
-{sub_styles_text if sub_styles_text else 'None'}
+====================
+STYLE CODE
+====================
 
-Descriptions:
-{desc_text if desc_text else 'No description available'}
+You MUST choose EXACTLY ONE style_code from:
 
-📋 CLASSIFICATION RULES:
+- BLONDE_GOLDEN      (Blonde / Golden Ale)
+- WHEAT_WITBIER      (Wheat Beer / Witbier)
+- IPA                (IPA, NEIPA, DIPA, TIPA, Double IPA, Triple IPA)
+- PALE_ALE           (Pale Ale)
+- RED_AMBER          (Red Ale / Amber)
+- LAGER_PILSNER      (Lager / Pilsner)
+- SAISON_FARMHOUSE   (Saison / Farmhouse Ale, Grisette)
+- SOUR_TART          (Sour / Tart Beer, Smoothie Sour, Fruited Sour, “Sûre”)
+- STOUT_PORTER       (Stout / Porter)
+- CIDER              (Cider / Cidre)
 
-1. style_code - Choose EXACTLY ONE:
-{chr(10).join([f'   - {code}' for code in STYLE_CODES])}
+Mapping rules (examples):
+- Any IPA / NEIPA / Double / Triple IPA / TIPA keyword → IPA
+- “Smoothie”, “Smoothie Sour”, “Fruited Sour”, “Sûre”, “Sure”, “Gose” → SOUR_TART
+- Any style string that contains "Sour -" (for example Untappd styles like "Sour - Other",
+  "Sour - Fruited Gose", etc.) should ALMOST ALWAYS be mapped to SOUR_TART,
+  even if another source says "Blanche", "Wheat", or something similar.
+- “Blonde”, “Golden” → BLONDE_GOLDEN
+- “Blanche”, “Witbier”, “Wheat” → WHEAT_WITBIER
+- “Cream Ale” → BLONDE_GOLDEN (unless clearly described as a wheat / witbier)
+- “Red Ale”, “Amber” → RED_AMBER
+- “Lager”, “Pilsner”, “Pils” → LAGER_PILSNER
+- “Saison”, “Farmhouse”, “Grisette” → SAISON_FARMHOUSE
+- “Stout”, “Porter” → STOUT_PORTER
+- “Cidre”, “Cider” → CIDER
 
-2. flavors - Choose 2-3 flavors that BEST represent this beer (minimum 2, maximum 4):
-{chr(10).join([f'   - {code}' for code in FLAVOR_CODES])}
+If unsure, pick the MOST plausible style based on the data. NEVER return null.
 
-   IMPORTANT: Most beers have AT LEAST 2 distinct flavor profiles. Be generous but accurate!
-   Examples:
-   - Witbier: SPICY_HERBAL (coriander) + CITRUS_TROPICAL (orange peel)
-   - IPA: HOPPY_BITTER + CITRUS_TROPICAL
-   - Stout: CHOCOLATE_COFFEE + MALTY_GRAINY + CARAMEL_TOFFEE_SWEET
+====================
+FLAVORS
+====================
 
-3. bitterness_level - Based on IBU or style:
-   - LOW: 0-20 IBU (Wheat, Blonde, Sour, most Lagers)
-   - MEDIUM: 20-40 IBU (Pale Ale, Amber, some IPAs)
-   - HIGH: 40+ IBU (IPA, Double IPA)
+You MUST choose between 2 and 4 flavor codes that best represent the beer.
 
-4. description_fr - Write a FUN, FRIENDLY French description (2-3 sentences, 50-80 words)
+Allowed flavor codes:
 
-   Make it friendly, funny, and pleasant to read. Use a casual tone like talking to a friend.
-   SAFETY RULE: Never reference minors, children, or underage drinking ("mineur", "enfant", "jeune")
+- HOPPY_BITTER          (Hoppy / Bitter)
+- CITRUS_TROPICAL       (Citrus / Tropical)
+- MALTY_GRAINY          (Malty / Grainy)
+- CARAMEL_TOFFEE_SWEET  (Caramel / Toffee / Sweet)
+- CHOCOLATE_COFFEE      (Chocolate / Coffee)
+- RED_FRUITS_BERRIES    (Red Fruits / Berries)
+- ORCHARD_FRUITS        (Peach, Pear & Orchard Fruits)
+- SPICY_HERBAL          (Spicy / Herbal)
+- WOODY_SMOKY           (Woody / Smoky)
+- SOUR_TART_FUNKY       (Sour / Tart / Funky)
 
-5. description_en - Write a FUN, FRIENDLY English description (2-3 sentences, 50-80 words)
+Guidelines:
+- IPA / NEIPA / tropical hops (Citra, Galaxy, Nelson, etc.) → HOPPY_BITTER + CITRUS_TROPICAL
+- Mango, passion fruit, guava, smoothie, tropical juice → CITRUS_TROPICAL
+- Vanilla, dessert-like, pastry, sweet finish → CARAMEL_TOFFEE_SWEET
+- Chocolate, coffee, espresso, roast → CHOCOLATE_COFFEE
+- Raspberry, cherry, berries → RED_FRUITS_BERRIES
+- Peach, pear, apricot → ORCHARD_FRUITS
+- Spices, pepper, coriander, herbs → SPICY_HERBAL
+- Oak, smoke, barrel → WOODY_SMOKY
+- Sour, tart, funky, wild, yogurt-like, Gose → SOUR_TART_FUNKY
 
-   Same: make it casual, fun, and enjoyable to read. Don't be too serious. Think beer blog vibes.
-   SAFETY RULE: Never reference minors, children, or underage drinking ("minor", "kid", "youth")
+Return an array of 2–4 codes, no more, no less. NEVER empty, NEVER null.
 
-CRITICAL RULES:
-- Use ONLY the exact codes provided
-- MUST have 2-3 flavors (rarely 1, occasionally 4)
-- Descriptions MUST be fun, casual, exciting - NO formal beer-review language!
+====================
+BITTERNESS LEVEL
+====================
 
-Respond with ONLY valid JSON:
+Field: bitterness_level
+
+Allowed values:
+- LOW
+- MEDIUM
+- HIGH
+
+If IBU is known:
+- 0 <= IBU < 20   → LOW
+- 20 <= IBU <= 40 → MEDIUM
+- IBU > 40        → HIGH
+
+If IBU is UNKNOWN:
+- If style_code in ["SOUR_TART", "BLONDE_GOLDEN", "WHEAT_WITBIER", "CIDER"] → LOW
+- If style_code in ["LAGER_PILSNER", "SAISON_FARMHOUSE", "RED_AMBER"] → MEDIUM
+- If style_code in ["IPA", "PALE_ALE", "STOUT_PORTER"] → MEDIUM by default
+- Only choose HIGH if the description clearly suggests STRONG bitterness:
+  - e.g. very bitter, resinous, biting, aggressive hops, sharp bitterness.
+
+Never return null for bitterness_level.
+
+Note: The final database may recompute bitterness later. Still, you MUST provide your best guess here.
+
+====================
+DESCRIPTIONS
+====================
+
+You MUST return:
+
+- description_fr:
+  - Langue: français
+  - Ton: fun, convivial, comme si tu parlais à un·e client·e dans un bar ou une boutique.
+  - Tu peux t’adresser directement à la personne (“tu”, “vous”) et utiliser des formules comme
+    “Parfaite si tu aimes…”, “Idéale pour ceux qui apprécient…”.
+  - Longueur: 2–3 phrases, environ 50–90 mots.
+  - Mentionne les arômes, saveurs, texture, style, ambiance générale.
+  - Interdictions:
+    - Ne jamais mentionner ou suggérer la surconsommation: pas de “sans modération”,
+      “encore une dernière”, “impossible de s’arrêter”, etc.
+    - Ne pas présenter la bière comme solution aux problèmes ou au stress
+      (pas de “pour oublier ta journée”, “pour décompresser de la semaine”, etc.).
+    - Ne jamais mentionner ou cibler des mineurs (pas de “jeunes”, “ados”, etc.).
+
+- description_en:
+  - Language: English
+  - Tone: friendly, conversational, like a beer shop talking to a customer.
+  - You MAY address the reader directly (“you”) with phrases like
+    “Great if you enjoy…”, “Perfect for anyone who loves…”.
+  - Length: 2–3 sentences, about 50–90 words.
+  - Mention aromas, flavors, mouthfeel, style, overall vibe.
+  - Forbidden:
+    - No encouragement of overconsumption: no “drink without moderation”,
+      “one more won’t hurt”, “impossible to stop”, etc.
+    - Do not frame the beer as a way to cope with stress or problems
+      (“to forget your day”, “to handle stress”, etc.).
+    - Never mention or target minors (“kids”, “teens”, “youngsters”, etc.).
+
+- In BOTH languages, do NOT describe specific situations or moments of consumption such as
+  “après une longue journée”, “soirée entre amis”, “journée ensoleillée”,
+  “moment de fraîcheur”, “moment de détente”, “pour accompagner un repas”,
+  “after a long day”, “sunny day”, “evening with friends”, “for a relaxed moment”,
+  “to unwind”, “to share with friends”, etc.
+  Focus ONLY on flavors, aromas, texture, appearance and the character of the beer itself.
+
+Both descriptions are REQUIRED. Never return null or empty strings.
+
+Vary your openings and wording. Do NOT start every description with the same phrase.
+
+====================
+CRITICAL CONSTRAINTS
+====================
+
+1. style_code MUST be one of:
+   {", ".join(STYLE_CODES)}
+
+2. flavors MUST be an array of 2 to 4 codes from:
+   {", ".join(FLAVOR_CODES)}
+
+3. bitterness_level MUST be one of:
+   LOW, MEDIUM, HIGH
+
+4. NEVER return null for:
+   - style_code
+   - flavors
+   - bitterness_level
+   - description_fr
+   - description_en
+
+====================
+OUTPUT FORMAT
+====================
+
+Respond with ONLY valid JSON, no comments, no extra text:
+
 {{
-  "style_code": "...",
-  "flavors": ["...", "...", "..."],
-  "bitterness_level": "...",
-  "description_fr": "...",
-  "description_en": "..."
-}}"""
+  "style_code": "IPA",
+  "flavors": ["HOPPY_BITTER", "CITRUS_TROPICAL"],
+  "bitterness_level": "HIGH",
+  "description_fr": " ... ",
+  "description_en": " ... "
+}}
+
+Now classify the beer and generate the JSON.
+"""
 
     return prompt
-
-
-def call_openrouter(prompt: str, model: str = "openai/gpt-4o-mini", temperature: float = 0.8, api_key: str = None) -> Optional[Dict]:
-    """Call OpenRouter API to get classification.
-
-    Args:
-        prompt: The classification prompt
-        model: Model to use (e.g., "openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet")
-        temperature: Sampling temperature
-        api_key: OpenRouter API key
-    """
+def call_openrouter(prompt: str, model: str = "openai/gpt-4o-mini",
+                    temperature: float = 0.8, api_key: str = None) -> Optional[Dict]:
+    """Call OpenRouter API to get classification."""
     try:
         client = OpenAI(
             base_url="https://openrouter.ai/api/v1",
@@ -304,7 +436,7 @@ def validate_classification(classification: Dict) -> bool:
         return False
 
     required_fields = ['style_code', 'flavors', 'bitterness_level',
-                      'description_fr', 'description_en']
+                       'description_fr', 'description_en']
     if not all(field in classification for field in required_fields):
         return False
 
@@ -312,7 +444,8 @@ def validate_classification(classification: Dict) -> bool:
         return False
 
     flavors = classification['flavors']
-    if not isinstance(flavors, list) or len(flavors) < 1 or len(flavors) > 4:
+    # MINIMUM 2 flavors, MAXIMUM 4
+    if not isinstance(flavors, list) or len(flavors) < 2 or len(flavors) > 4:
         return False
 
     if not all(f in FLAVOR_CODES for f in flavors):
@@ -327,7 +460,7 @@ def validate_classification(classification: Dict) -> bool:
 def infer_bitterness_from_style(style_code: str) -> str:
     """Infer typical bitterness level from beer style when IBU is not available."""
     style_to_bitterness = {
-        'IPA': 'HIGH',
+        'IPA': 'MEDIUM',           # IPAs sans IBU → MEDIUM par défaut
         'PALE_ALE': 'MEDIUM',
         'STOUT_PORTER': 'MEDIUM',
         'BLONDE_GOLDEN': 'LOW',
@@ -341,12 +474,9 @@ def infer_bitterness_from_style(style_code: str) -> str:
     return style_to_bitterness.get(style_code, 'MEDIUM')
 
 
-def classify_beer_with_retry(beer: Dict, model: str = "openai/gpt-4o-mini", api_key: str = None, max_retries: int = 5) -> Optional[Dict]:
-    """Call LLM to classify beer (style, flavors, descriptions only).
-
-    Returns raw LLM classification or None if all retries failed.
-    Does NOT calculate alcohol_strength or bitterness_level - that's done in format_for_prisma().
-    """
+def classify_beer_with_retry(beer: Dict, model: str = "openai/gpt-4o-mini",
+                             api_key: str = None, max_retries: int = 5) -> Optional[Dict]:
+    """Call LLM to classify beer (style, flavors, descriptions only)."""
     for attempt in range(max_retries):
         prompt = build_classification_prompt(beer)
         classification = call_openrouter(prompt, model, api_key=api_key)
@@ -382,12 +512,17 @@ def format_for_prisma(beer: Dict, classification: Optional[Dict]) -> Dict:
     abv_value = extract_abv(beer)
     alcohol_strength = calculate_alcohol_strength(abv_value)
 
-    # Calculate bitternessLevel: IBU first, then infer from style, then default
+    # Calculate bitternessLevel: IBU first, then ABV+style, then style, then default
     ibu_value = beer.get('untappd_ibu') or beer.get('ibu_normalized')
     if ibu_value is not None:
         bitterness_level = calculate_bitterness_level(ibu_value)
     elif classification and 'style_code' in classification:
-        bitterness_level = infer_bitterness_from_style(classification['style_code'])
+        style_code = classification['style_code']
+        # Special rule: IPA costaud (ABV >= 7.5) → HIGH si pas d'IBU
+        if style_code == "IPA" and abv_value is not None and abv_value >= 7.5:
+            bitterness_level = "HIGH"
+        else:
+            bitterness_level = infer_bitterness_from_style(style_code)
     else:
         bitterness_level = "MEDIUM"
 
@@ -396,15 +531,15 @@ def format_for_prisma(beer: Dict, classification: Optional[Dict]) -> Dict:
     rating = beer.get('untappd_rating', 0)
 
     # Only include rating if there are actual ratings (numRatings > 0)
-    rating_str = str(rating) if num_ratings > 0 else None
+    rating_str = str(rating) if num_ratings and num_ratings > 0 else None
 
     prisma_beer = {
         "codeBar": beer.get('upc') or None,
         "productName": beer.get('name'),
-        "abv": str(abv_value) if abv_value else None,
-        "ibu": str(ibu_value) if ibu_value else None,
+        "abv": str(abv_value) if abv_value is not None else None,
+        "ibu": str(ibu_value) if ibu_value is not None else None,
         "rating": rating_str,
-        "numRatings": num_ratings,
+        "numRatings": num_ratings or 0,
         "imageUrl": get_first_image(beer.get('photo_urls', {})),
         "producer": {
             "name": beer.get('producer')
@@ -425,7 +560,7 @@ def format_for_prisma(beer: Dict, classification: Optional[Dict]) -> Dict:
                 "code": flavor_code,
                 "name": FLAVOR_NAMES[flavor_code]
             }
-            for flavor_code in classification['flavors']
+            for flavor_code in (classification['flavors'] if classification else [])
         ] if classification else None
     }
 
@@ -436,8 +571,8 @@ class ThreadSafeProgress:
     """Thread-safe progress tracking."""
     def __init__(self):
         self.lock = threading.Lock()
-        self.classified_beers = []
-        self.failed_beers = []
+        self.classified_beers: List[Dict] = []
+        self.failed_beers: List[Dict] = []
         self.processed_count = 0
 
     def add_classified(self, beer: Dict):
@@ -488,8 +623,9 @@ def process_beer(args):
 
 
 # Global variables for signal handler
-_output_file = None
-_progress = None
+_output_file: Optional[Path] = None
+_progress: Optional[ThreadSafeProgress] = None
+
 
 def signal_handler(sig, frame):
     """Handle Ctrl+C gracefully by saving progress before exiting."""
@@ -530,7 +666,6 @@ def main():
 
     input_file = Path(sys.argv[1])
     output_file = Path(sys.argv[2])
-    progress_file = output_file.parent / f"{output_file.stem}.progress"
 
     # Install signal handler for Ctrl+C
     signal.signal(signal.SIGINT, signal_handler)
