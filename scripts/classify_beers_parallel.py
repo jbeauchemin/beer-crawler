@@ -67,6 +67,15 @@ from typing import Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 
+# Try to load .env file if python-dotenv is available
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # Load environment variables from .env file
+except ImportError:
+    # python-dotenv not installed, .env won't be loaded automatically
+    # User can still export OPENROUTER_API_KEY manually or use --api-key
+    pass
+
 try:
     from openai import OpenAI
 except ImportError:
